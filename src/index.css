@@ -1,0 +1,269 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Be Vietnam Pro", ui-sans-serif, system-ui, sans-serif;
+
+  --color-fingo-green: #22c55e;
+  --color-fingo-green-dark: #16a34a;
+  --color-fingo-green-soft: #dcfce7;
+  --color-fingo-blue: #3b82f6;
+  --color-fingo-blue-dark: #2563eb;
+  --color-fingo-blue-soft: #dbeafe;
+  --color-fingo-bg: #f3f6f9;
+  --color-fingo-surface: #ffffff;
+  --color-fingo-ink: #0f172a;
+  --color-fingo-muted: #64748b;
+  --color-fingo-border: #e2e8f0;
+  --color-fingo-danger: #ef4444;
+  --color-fingo-warning: #f59e0b;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--font-body);
+    color: var(--color-fingo-ink);
+    background:
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgba(34, 197, 94, 0.12), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 0%, rgba(59, 130, 246, 0.1), transparent),
+      var(--color-fingo-bg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .material-symbols-rounded {
+    font-family: "Material Symbols Rounded";
+    font-weight: normal;
+    font-style: normal;
+    font-size: 1.35rem;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    font-feature-settings: "liga";
+    -webkit-font-smoothing: antialiased;
+    font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  }
+
+  .material-symbols-rounded.filled {
+    font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+  }
+
+  .card-raised {
+    background: var(--color-fingo-surface);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 1.25rem;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.8) inset,
+      0 8px 24px -12px rgba(15, 23, 42, 0.18),
+      0 2px 6px rgba(15, 23, 42, 0.04);
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: none;
+    border-radius: 9999px;
+    background: linear-gradient(180deg, #34d399 0%, var(--color-fingo-green) 100%);
+    color: white;
+    font-family: var(--font-display);
+    font-weight: 700;
+    padding: 0.75rem 1.25rem;
+    cursor: pointer;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.35) inset,
+      0 8px 16px -8px rgba(34, 197, 94, 0.7);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  }
+
+  .btn-primary:hover {
+    filter: brightness(1.03);
+    transform: translateY(-1px);
+  }
+
+  .btn-primary:active {
+    transform: translateY(1px);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.25) inset,
+      0 4px 10px -6px rgba(34, 197, 94, 0.7);
+  }
+
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1px solid var(--color-fingo-border);
+    border-radius: 9999px;
+    background: white;
+    color: var(--color-fingo-ink);
+    font-family: var(--font-display);
+    font-weight: 600;
+    padding: 0.75rem 1.25rem;
+    cursor: pointer;
+    box-shadow: 0 4px 12px -8px rgba(15, 23, 42, 0.25);
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+
+  .btn-secondary:hover {
+    background: #f8fafc;
+    transform: translateY(-1px);
+  }
+
+  .btn-blue {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: none;
+    border-radius: 9999px;
+    background: linear-gradient(180deg, #60a5fa 0%, var(--color-fingo-blue) 100%);
+    color: white;
+    font-family: var(--font-display);
+    font-weight: 700;
+    padding: 0.75rem 1.25rem;
+    cursor: pointer;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.35) inset,
+      0 8px 16px -8px rgba(59, 130, 246, 0.7);
+  }
+
+  .input-field {
+    width: 100%;
+    border: 1.5px solid var(--color-fingo-border);
+    border-radius: 0.9rem;
+    background: #f8fafc;
+    padding: 0.8rem 1rem;
+    color: var(--color-fingo-ink);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  }
+
+  .input-field:focus {
+    border-color: var(--color-fingo-green);
+    background: white;
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.15);
+  }
+
+  .progress-track {
+    position: relative;
+    overflow: hidden;
+    height: 0.65rem;
+    border-radius: 9999px;
+    background: #e2e8f0;
+  }
+
+  .progress-fill {
+    position: relative;
+    height: 100%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, var(--color-fingo-green), #4ade80);
+    transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .progress-fill::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      110deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.45) 50%,
+      transparent 70%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2.2s ease-in-out infinite;
+  }
+
+  .progress-fill.blue {
+    background: linear-gradient(90deg, var(--color-fingo-blue), #60a5fa);
+  }
+
+  .progress-fill.warning {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+  }
+
+  .progress-fill.danger {
+    background: linear-gradient(90deg, #ef4444, #f87171);
+  }
+
+  .page-enter {
+    animation: pageIn 0.35s ease both;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes pageIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-floaty {
+  animation: floaty 3s ease-in-out infinite;
+}
+
+.animate-pop {
+  animation: popIn 0.25s ease both;
+}

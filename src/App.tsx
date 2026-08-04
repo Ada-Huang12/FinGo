@@ -1,0 +1,43 @@
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { AppLayout } from './components/layout/AppLayout'
+import { HomePage } from './pages/HomePage'
+import { BillsPage } from './pages/BillsPage'
+import { GoalsPage } from './pages/GoalsPage'
+import { SocialPage } from './pages/SocialPage'
+import { AiCoachPage } from './pages/AiCoachPage'
+import { LoginPage, SignupPage } from './pages/AuthPages'
+
+function ProtectedRoute() {
+  const { user, loading } = useAuth()
+  if (loading) {
+    return (
+      <div className="grid min-h-screen place-items-center text-fingo-muted">
+        Loading FinGo…
+      </div>
+    )
+  }
+  if (!user) return <Navigate to="/login" replace />
+  return <Outlet />
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route element={<ProtectedRoute />}>
+          <Route element={<AppLayout />}>
+            <Route index element={<HomePage />} />
+            <Route path="bills" element={<BillsPage />} />
+            <Route path="goals" element={<GoalsPage />} />
+            <Route path="social" element={<SocialPage />} />
+            <Route path="ai-coach" element={<AiCoachPage />} />
+          </Route>
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AuthProvider>
+  )
+}
