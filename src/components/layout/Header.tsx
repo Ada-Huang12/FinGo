@@ -11,7 +11,7 @@ const nav = [
 ]
 
 export function Header() {
-  const { user, signOut, mode } = useAuth()
+  const { user, signOut } = useAuth()
   const first = user?.full_name?.split(' ')[0] ?? 'there'
 
   return (
@@ -50,11 +50,6 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-2">
-          {mode === 'local' && (
-            <span className="hidden rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700 sm:inline">
-              Local demo
-            </span>
-          )}
           <button
             type="button"
             onClick={() => void signOut()}

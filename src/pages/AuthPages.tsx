@@ -47,7 +47,7 @@ function AuthShell({
 }
 
 export function LoginPage() {
-  const { signIn, user, loading, mode } = useAuth()
+  const { signIn, user, loading } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -72,13 +72,6 @@ export function LoginPage() {
 
   return (
     <AuthShell title="Welcome back" subtitle="Sign in to your personal financial habit tracker">
-      {mode === 'local' && (
-        <div className="mb-4 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-          Running in <strong>local demo mode</strong> (no Supabase credentials). Data is stored in this
-          browser. Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> to enable
-          multi-user cloud sync.
-        </div>
-      )}
       <form onSubmit={onSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-sm font-semibold text-fingo-muted">Email</label>
@@ -119,7 +112,7 @@ export function LoginPage() {
 }
 
 export function SignupPage() {
-  const { signUp, user, loading, mode } = useAuth()
+  const { signUp, user, loading } = useAuth()
   const navigate = useNavigate()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
@@ -145,11 +138,6 @@ export function SignupPage() {
 
   return (
     <AuthShell title="Create your FinGo" subtitle="Build better money habits with a playful coach">
-      {mode === 'local' && (
-        <div className="mb-4 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-          Local demo mode: new accounts start empty (no sample transactions, budgets, or friends).
-        </div>
-      )}
       <form onSubmit={onSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-sm font-semibold text-fingo-muted">Full name</label>

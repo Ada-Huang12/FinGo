@@ -21,7 +21,7 @@ function errorMessage(err: unknown, fallback: string) {
 }
 
 export function SocialPage() {
-  const { user, mode } = useAuth()
+  const { user } = useAuth()
   const {
     friends,
     friendships,
@@ -223,9 +223,7 @@ export function SocialPage() {
       <Modal open={open} title="Add a friend" onClose={() => setOpen(false)}>
         <form onSubmit={onInvite} className="space-y-3">
           <p className="text-sm text-fingo-muted">
-            {mode === 'local'
-              ? 'Enter their FinGo account email. In local demo mode, try jordan@example.com after signing up.'
-              : 'Enter the exact email they used to sign up for FinGo.'}
+            Enter the exact email they used to sign up for FinGo.
           </p>
           <input
             className="input-field"
