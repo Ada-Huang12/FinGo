@@ -168,10 +168,10 @@ begin
     new.email,
     coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
     new.raw_user_meta_data->>'avatar_url',
-    120,
+    0,
     'peach',
-    '{"hat":null,"glasses":null,"scarf":null,"pet":null,"cheeks":"cheeks-blush","backdrop":null}'::jsonb,
-    array['cheeks-blush']
+    '{"hat":null,"glasses":null,"scarf":null,"pet":null,"cheeks":null,"backdrop":null}'::jsonb,
+    '{}'::text[]
   );
   return new;
 end;

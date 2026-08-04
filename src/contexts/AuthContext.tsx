@@ -72,9 +72,7 @@ async function ensureSupabaseProfile(
       email,
       full_name: fullName,
       avatar_url: null,
-      points: 120,
-      owned_accessories: ['cheeks-blush'],
-      avatar_equipped: { ...defaults.avatar_equipped, cheeks: 'cheeks-blush' },
+      ...defaults,
     })
   }
 
@@ -82,10 +80,10 @@ async function ensureSupabaseProfile(
     id: userId,
     email,
     full_name: fullName,
-    points: 120,
+    points: defaults.points,
     avatar_skin: defaults.avatar_skin,
-    avatar_equipped: { ...defaults.avatar_equipped, cheeks: 'cheeks-blush' },
-    owned_accessories: ['cheeks-blush'],
+    avatar_equipped: defaults.avatar_equipped,
+    owned_accessories: defaults.owned_accessories,
   })
   if (error) {
     console.warn('Failed to upsert profile:', error.message)
@@ -100,9 +98,7 @@ async function ensureSupabaseProfile(
     email,
     full_name: fullName,
     avatar_url: null,
-    points: 120,
-    owned_accessories: ['cheeks-blush'],
-    avatar_equipped: { ...defaults.avatar_equipped, cheeks: 'cheeks-blush' },
+    ...defaults,
   })
 }
 

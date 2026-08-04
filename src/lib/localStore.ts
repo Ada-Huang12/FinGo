@@ -59,6 +59,35 @@ function monthKey(offset = 0) {
   return format(d, 'yyyy-MM')
 }
 
+export function createBlankAccount(
+  userId: string,
+  email: string,
+  fullName: string,
+): { profile: Profile; aiMessages: AiMessage[] } {
+  const defaults = defaultAvatarProfileFields()
+  const profile = normalizeProfile({
+    id: userId,
+    email,
+    full_name: fullName,
+    avatar_url: null,
+    ...defaults,
+    created_at: new Date().toISOString(),
+  })
+
+  return {
+    profile,
+    aiMessages: [
+      {
+        id: uid(),
+        user_id: userId,
+        role: 'assistant',
+        content: `Hey ${fullName.split(' ')[0] || 'there'}! I'm your FinGo AI Coach. Your account starts fresh — add transactions, budgets, bills, or goals anytime, or ask me for tips.`,
+        created_at: new Date().toISOString(),
+      },
+    ],
+  }
+}
+
 export function createDemoData(userId: string, email: string, fullName: string): Partial<LocalStore> {
   const month = currentMonth()
   const friendId = uid()
@@ -72,10 +101,10 @@ export function createDemoData(userId: string, email: string, fullName: string):
     email,
     full_name: fullName,
     avatar_url: null,
-    points: 120,
+    points: 0,
     avatar_skin: 'peach',
-    avatar_equipped: { ...EMPTY_EQUIPPED, cheeks: 'cheeks-blush' },
-    owned_accessories: ['cheeks-blush'],
+    avatar_equipped: { ...EMPTY_EQUIPPED },
+    owned_accessories: [],
     created_at: new Date().toISOString(),
   })
 
@@ -216,15 +245,7 @@ export function loadStore(): LocalStore {
     if (!raw) return emptyStore()
     const parsed = { ...emptyStore(), ...JSON.parse(raw) } as LocalStore
     parsed.profiles = (parsed.profiles ?? []).map((p) => {
-      const needsStarter = (p as Partial<Profile>).points === undefined
       const normalized = normalizeProfile(p)
-      if (needsStarter) {
-        normalized.points = 120
-        if (!normalized.owned_accessories.includes('cheeks-blush')) {
-          normalized.owned_accessories = [...normalized.owned_accessories, 'cheeks-blush']
-          normalized.avatar_equipped = { ...normalized.avatar_equipped, cheeks: 'cheeks-blush' }
-        }
-      }
       return normalized
     })
     parsed.goals = (parsed.goals ?? []).map((g) => ({
@@ -247,23 +268,13 @@ export function localSignUp(fullName: string, email: string, password: string) {
     throw new Error('An account with this email already exists.')
   }
   const userId = uid()
-  const demo = createDemoData(userId, email, fullName)
-  store.profiles.push(...(demo.profiles ?? []))
+  const blank = createBlankAccount(userId, email, fullName)
+  store.profiles.push(blank.profile)
   store.sessions.push({ userId, email, password })
   store.currentUserId = userId
-  store.transactions.push(...(demo.transactions ?? []))
-  store.budgets.push(...(demo.budgets ?? []))
-  store.bills.push(...(demo.bills ?? []))
-  store.subscriptions.push(...(demo.subscriptions ?? []))
-  store.goals.push(...(demo.goals ?? []))
-  store.goalMembers.push(...(demo.goalMembers ?? []))
-  store.contributions.push(...(demo.contributions ?? []))
-  store.friendships.push(...(demo.friendships ?? []))
-  store.challenges.push(...(demo.challenges ?? []))
-  store.challengeParticipants.push(...(demo.challengeParticipants ?? []))
-  store.aiMessages.push(...(demo.aiMessages ?? []))
+  store.aiMessages.push(...blank.aiMessages)
   saveStore(store)
-  return store.profiles.find((p) => p.id === userId)!
+  return blank.profile
 }
 
 export function localSignIn(email: string, password: string) {

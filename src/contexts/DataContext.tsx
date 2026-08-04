@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -147,6 +148,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [challenges, setChallenges] = useState<Challenge[]>([])
   const [aiMessages, setAiMessages] = useState<AiMessage[]>([])
   const [lastPointsEarned, setLastPointsEarned] = useState<number | null>(null)
+  const activeUserIdRef = useRef<string | null>(null)
+
+  const clearData = useCallback(() => {
+    setTransactions([])
+    setBudgets([])
+    setBills([])
+    setSubscriptions([])
+    setGoals([])
+    setContributions([])
+    setFriendships([])
+    setFriends([])
+    setChallenges([])
+    setAiMessages([])
+    setLastPointsEarned(null)
+  }, [])
 
   const refreshLocal = useCallback(() => {
     if (!user) return
@@ -313,19 +329,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     if (!user) {
-      setTransactions([])
-      setBudgets([])
-      setBills([])
-      setSubscriptions([])
-      setGoals([])
-      setContributions([])
-      setFriendships([])
-      setFriends([])
-      setChallenges([])
-      setAiMessages([])
+      activeUserIdRef.current = null
+      clearData()
       setLoading(false)
       return
     }
+
+    // Switching accounts: wipe previous user's in-memory data immediately.
+    if (activeUserIdRef.current !== user.id) {
+      activeUserIdRef.current = user.id
+      clearData()
+    }
+
     setLoading(true)
     try {
       if (mode === 'local') refreshLocal()
@@ -333,7 +348,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }, [user, mode, refreshLocal, refreshSupabase])
+  }, [user, mode, refreshLocal, refreshSupabase, clearData])
 
   useEffect(() => {
     void refresh()

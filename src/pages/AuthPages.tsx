@@ -147,7 +147,7 @@ export function SignupPage() {
     <AuthShell title="Create your FinGo" subtitle="Build better money habits with a playful coach">
       {mode === 'local' && (
         <div className="mb-4 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-          Local demo mode seeds realistic sample data for your new account only.
+          Local demo mode: new accounts start empty (no sample transactions, budgets, or friends).
         </div>
       )}
       <form onSubmit={onSubmit} className="space-y-3">

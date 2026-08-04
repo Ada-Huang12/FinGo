@@ -10,17 +10,5 @@ alter table public.profiles
 alter table public.goals
   add column if not exists points_awarded boolean not null default false;
 
--- Give existing users a starter pack (safe to re-run; only fills empty inventories)
-update public.profiles
-set
-  points = greatest(points, 120),
-  owned_accessories = case
-    when cardinality(owned_accessories) = 0 then array['cheeks-blush']
-    else owned_accessories
-  end,
-  avatar_equipped = case
-    when avatar_equipped->>'cheeks' is null
-      then jsonb_set(avatar_equipped, '{cheeks}', '"cheeks-blush"')
-    else avatar_equipped
-  end
-where points = 0 or cardinality(owned_accessories) = 0;
+-- New accounts start empty (0 points, no accessories).
+-- Points are earned by completing savings goals.

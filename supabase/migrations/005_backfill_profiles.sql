@@ -7,10 +7,10 @@ select
   coalesce(u.email, ''),
   coalesce(u.raw_user_meta_data->>'full_name', split_part(coalesce(u.email, 'user'), '@', 1)),
   u.raw_user_meta_data->>'avatar_url',
-  120,
+  0,
   'peach',
-  '{"hat":null,"glasses":null,"scarf":null,"pet":null,"cheeks":"cheeks-blush","backdrop":null}'::jsonb,
-  array['cheeks-blush']
+  '{"hat":null,"glasses":null,"scarf":null,"pet":null,"cheeks":null,"backdrop":null}'::jsonb,
+  '{}'::text[]
 from auth.users u
 where not exists (select 1 from public.profiles p where p.id = u.id)
 on conflict (id) do nothing;
