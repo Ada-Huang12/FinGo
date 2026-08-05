@@ -44,6 +44,11 @@ export type CoachAction =
       kind: 'profile_prefs'
       prefs: Partial<CoachPrefs>
     }
+  | {
+      kind: 'budget'
+      category: string
+      limit_amount: number
+    }
 
 export interface CoachResult {
   reply: string
@@ -235,6 +240,87 @@ function looksLikeExpense(q: string): boolean {
   )
 }
 
+function looksLikeBudgetSet(q: string): boolean {
+  const hasVerb =
+    /\b(set|create|add|update|change|raise|lower|increase|decrease|adjust)\b.{0,40}\bbudgets?\b/i.test(q) ||
+    /\bbudgets?\b.{0,40}\b(set|create|add|update|change|raise|lower|increase|decrease|adjust)\b/i.test(q)
+  const hasLimitPhrase =
+    /\bbudgets?\b.{0,40}\b(to|at|of)\s+\$?\s*\d/i.test(q) ||
+    /\b(cap|limit)\b.{0,24}\b(for|on)\b.{0,24}\b(food|transport|shopping|entertainment|utilities|health|housing|education|other|grocer|rent|gas)\b/i.test(
+      q,
+    )
+  return hasVerb || hasLimitPhrase
+}
+
+function parseBudgetCategory(prompt: string): string | null {
+  for (const cat of EXPENSE_CATEGORIES) {
+    if (new RegExp(`\\b${cat}\\b`, 'i').test(prompt)) return cat
+  }
+  const alias: Record<string, (typeof EXPENSE_CATEGORIES)[number]> = {
+    groceries: 'Food',
+    grocery: 'Food',
+    snacks: 'Food',
+    dining: 'Food',
+    restaurants: 'Food',
+    gas: 'Transport',
+    commute: 'Transport',
+    uber: 'Transport',
+    lyft: 'Transport',
+    clothes: 'Shopping',
+    clothing: 'Shopping',
+    movies: 'Entertainment',
+    fun: 'Entertainment',
+    wifi: 'Utilities',
+    electric: 'Utilities',
+    utilities: 'Utilities',
+    rent: 'Housing',
+    mortgage: 'Housing',
+    doctor: 'Health',
+    medical: 'Health',
+    school: 'Education',
+    tuition: 'Education',
+  }
+  const q = prompt.toLowerCase()
+  for (const [word, cat] of Object.entries(alias)) {
+    if (new RegExp(`\\b${word}\\b`, 'i').test(q)) return cat
+  }
+  return null
+}
+
+function parseBudgetIntent(prompt: string): CoachAction | { needAmount: true; reply: string } | null {
+  const q = prompt.toLowerCase()
+  if (!looksLikeBudgetSet(q)) return null
+
+  const category = parseBudgetCategory(prompt)
+  const amount = parseAmount(prompt)
+
+  if (!category && amount == null) {
+    return {
+      needAmount: true,
+      reply:
+        'I can set a monthly budget — which category and limit? Example: “Set my Food budget to $400”.',
+    }
+  }
+  if (!category) {
+    return {
+      needAmount: true,
+      reply: `I can set that $${amount} budget — which category? Try Food, Transport, Shopping, Entertainment, Utilities, Health, Housing, Education, or Other.`,
+    }
+  }
+  if (amount == null) {
+    return {
+      needAmount: true,
+      reply: `I can set your ${category} budget — what’s the monthly limit? Example: “Set ${category} budget to $300”.`,
+    }
+  }
+
+  return {
+    kind: 'budget',
+    category,
+    limit_amount: amount,
+  }
+}
+
 function parseSubscriptionIntent(prompt: string): CoachAction | { needAmount: true; reply: string } | null {
   const q = prompt.toLowerCase()
   if (!looksLikeSubscription(q)) return null
@@ -390,6 +476,9 @@ function confirmAction(action: CoachAction): string {
   if (action.kind === 'subscription') {
     return `Added ${action.name} subscription for ${formatCurrency(action.amount)}/${action.billing_cycle}. Next billing: ${formatShortDate(action.next_billing_date)}.`
   }
+  if (action.kind === 'budget') {
+    return `Set your ${action.category} budget to ${formatCurrency(action.limit_amount)} for this month. You can tweak it anytime on Home → Budget tracker.`
+  }
   const bits: string[] = []
   if (action.prefs.job_title) bits.push(`job → ${action.prefs.job_title}`)
   if (action.prefs.yearly_income != null) bits.push(`yearly income → ${formatCurrency(action.prefs.yearly_income)}`)
@@ -470,6 +559,7 @@ function parseCoachIntent(
   prompt: string,
 ): CoachAction | { needAmount: true; reply: string } | null {
   return (
+    parseBudgetIntent(prompt) ||
     parseSubscriptionIntent(prompt) ||
     parseBillIntent(prompt) ||
     parseIncomeIntent(prompt) ||
@@ -564,7 +654,7 @@ export function generateCoachReply(
             ? ` Also keep an eye on ${prefs.spend_focus}, since you flagged it.`
             : ''
       return {
-        reply: `${topBudget.category} is at ${pct}% of its budget (${formatCurrency(topBudget.spent_amount)} of ${formatCurrency(topBudget.limit_amount)}).${focus}`,
+        reply: `${topBudget.category} is at ${pct}% of its budget (${formatCurrency(topBudget.spent_amount)} of ${formatCurrency(topBudget.limit_amount)}).${focus} Say “Set Food budget to $400” anytime, or edit limits on Home.`,
         actions: [],
       }
     }
@@ -573,7 +663,7 @@ export function generateCoachReply(
       ? ` With ~${formatCurrency(takeHome)} monthly income on file, try keeping discretionary spend under ${formatCurrency(Math.round(takeHome * 0.3))}.`
       : ' Aim to keep discretionary categories under 30% of take-home.'
     return {
-      reply: `Your tracked spending this period is ${formatCurrency(expenses)} against ${formatCurrency(income)} income.${tip}`,
+      reply: `No category budgets yet this month. Your spending is ${formatCurrency(expenses)} against ${formatCurrency(income)} income.${tip} Try “Set Food budget to $400”, or tap Add budget on Home.`,
       actions: [],
     }
   }
@@ -608,14 +698,14 @@ export function generateCoachReply(
   if (q.includes('hello') || q.includes('hi') || q.includes('hey')) {
     const personal = prefs?.job_title ? ` As a ${prefs.job_title},` : ''
     return {
-      reply: `Hey ${ctx.name.split(' ')[0]}!${personal} I can log spending or income, schedule bills, add subscriptions, and update your coach profile. Try “I spent $40 on gas today” or “I switched jobs to teaching and make $55,000 a year”.`,
+      reply: `Hey ${ctx.name.split(' ')[0]}!${personal} I can log spending or income, set budgets, schedule bills, add subscriptions, and update your coach profile. Try “Set Food budget to $400” or “I spent $40 on gas today”.`,
       actions: [],
     }
   }
 
   const personal = prefs ? prefsBlurb(prefs) : ' '
   return {
-    reply: `Here's your snapshot, ${ctx.name.split(' ')[0]}: income ${formatCurrency(income)}, spending ${formatCurrency(expenses)}, ${pending.length} pending bills, and ${ctx.goals.length} savings goals.${personal}Ask me to log money, schedule a bill, or update your job/income anytime.`,
+    reply: `Here's your snapshot, ${ctx.name.split(' ')[0]}: income ${formatCurrency(income)}, spending ${formatCurrency(expenses)}, ${pending.length} pending bills, and ${ctx.goals.length} savings goals.${personal}Ask me to log money, set a budget, schedule a bill, or update your job/income anytime.`,
     actions: [],
   }
 }

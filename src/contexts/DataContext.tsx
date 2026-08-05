@@ -62,6 +62,7 @@ interface DataContextValue {
     date: string
   }) => Promise<void>
   updateBudget: (id: string, limit_amount: number) => Promise<void>
+  setBudget: (category: string, limit_amount: number) => Promise<void>
   updateBillStatus: (id: string, status: BillStatus) => Promise<void>
   addBill: (input: {
     name: string
@@ -440,6 +441,65 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!supabase) return
     const { error } = await supabase.from('budgets').update({ limit_amount }).eq('id', id)
     if (error) throw error
+    await refreshSupabase()
+  }
+
+  const setBudget: DataContextValue['setBudget'] = async (category, limit_amount) => {
+    if (!user) return
+    const month = currentMonth()
+    const limit = Math.round(Number(limit_amount) * 100) / 100
+    if (!Number.isFinite(limit) || limit < 0) throw new Error('Enter a valid budget limit.')
+
+    if (mode === 'local') {
+      const store = loadStore()
+      const existing = store.budgets.find(
+        (b) => b.user_id === user.id && b.category === category && b.month === month,
+      )
+      if (existing) {
+        existing.limit_amount = limit
+      } else {
+        const spent = store.transactions
+          .filter(
+            (t) =>
+              t.user_id === user.id &&
+              t.type === 'expense' &&
+              t.category === category &&
+              t.date.startsWith(month),
+          )
+          .reduce((s, t) => s + Number(t.amount), 0)
+        store.budgets.push({
+          id: uid(),
+          user_id: user.id,
+          category,
+          limit_amount: limit,
+          spent_amount: Math.round(spent * 100) / 100,
+          month,
+          created_at: new Date().toISOString(),
+        })
+      }
+      saveStore(store)
+      refreshLocal()
+      return
+    }
+
+    if (!supabase) return
+    const existing = budgets.find((b) => b.category === category && b.month === month)
+    if (existing) {
+      const { error } = await supabase.from('budgets').update({ limit_amount: limit }).eq('id', existing.id)
+      if (error) throw error
+    } else {
+      const spent = transactions
+        .filter((t) => t.type === 'expense' && t.category === category && t.date.startsWith(month))
+        .reduce((s, t) => s + Number(t.amount), 0)
+      const { error } = await supabase.from('budgets').insert({
+        user_id: user.id,
+        category,
+        limit_amount: limit,
+        spent_amount: Math.round(spent * 100) / 100,
+        month,
+      })
+      if (error) throw error
+    }
     await refreshSupabase()
   }
 
@@ -873,6 +933,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           })
         } else if (action.kind === 'profile_prefs') {
           await saveCoachPrefs(action.prefs)
+        } else if (action.kind === 'budget') {
+          await setBudget(action.category, action.limit_amount)
         }
       }
     } catch (err) {
@@ -924,6 +986,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     refresh,
     addTransaction,
     updateBudget,
+    setBudget,
     updateBillStatus,
     addBill,
     toggleSubscription,

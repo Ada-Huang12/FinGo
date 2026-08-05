@@ -6,7 +6,7 @@ import { Icon } from '../components/ui/Icon'
 
 const quickPrompts = [
   'I spent $40 on snacks today, log it',
-  'I earned $500 from freelance today',
+  'Set Food budget to $400',
   'How is my budget looking?',
   'Help me save more',
 ]

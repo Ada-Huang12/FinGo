@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { formatCurrency, percent } from '../../lib/format'
+import { useMemo, useState } from 'react'
+import { EXPENSE_CATEGORIES, formatCurrency, percent } from '../../lib/format'
 import type { Budget } from '../../lib/types'
 import { useData } from '../../contexts/DataContext'
 import { Button } from '../ui/Button'
@@ -9,19 +9,46 @@ import { Modal } from '../ui/Modal'
 import { ProgressBar } from '../ui/ProgressBar'
 
 export function BudgetTracker({ budgets }: { budgets: Budget[] }) {
-  const { updateBudget } = useData()
+  const { updateBudget, setBudget } = useData()
   const [editing, setEditing] = useState<Budget | null>(null)
+  const [adding, setAdding] = useState(false)
   const [limit, setLimit] = useState('')
+  const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const availableCategories = useMemo(() => {
+    const used = new Set(budgets.map((b) => b.category))
+    return EXPENSE_CATEGORIES.filter((c) => !used.has(c))
+  }, [budgets])
+
+  function openAdd() {
+    setError('')
+    setLimit('')
+    setCategory(availableCategories[0] ?? EXPENSE_CATEGORIES[0])
+    setAdding(true)
+  }
+
+  function openEdit(b: Budget) {
+    setError('')
+    setEditing(b)
+    setLimit(String(b.limit_amount))
+  }
 
   return (
     <>
       <Card className="p-5 sm:p-6">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h2 className="font-display text-lg font-bold text-fingo-ink">Budget tracker</h2>
             <p className="text-sm text-fingo-muted">Stay cozy inside your limits</p>
           </div>
-          <Icon name="account_balance_wallet" className="text-fingo-blue" />
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" className="!px-3 !py-2 text-sm" onClick={openAdd}>
+              Add budget
+            </Button>
+            <Icon name="account_balance_wallet" className="text-fingo-blue" />
+          </div>
         </div>
         <div className="space-y-4">
           {budgets.map((b) => {
@@ -31,10 +58,7 @@ export function BudgetTracker({ budgets }: { budgets: Budget[] }) {
               <button
                 key={b.id}
                 type="button"
-                onClick={() => {
-                  setEditing(b)
-                  setLimit(String(b.limit_amount))
-                }}
+                onClick={() => openEdit(b)}
                 className="w-full rounded-2xl bg-slate-50 p-3 text-left transition hover:bg-slate-100"
               >
                 <div className="mb-2 flex items-center justify-between gap-2 text-sm">
@@ -48,7 +72,9 @@ export function BudgetTracker({ budgets }: { budgets: Budget[] }) {
             )
           })}
           {budgets.length === 0 && (
-            <p className="text-sm text-fingo-muted">No budgets for this month yet.</p>
+            <p className="text-sm text-fingo-muted">
+              No budgets for this month yet. Add one here, or ask the AI coach: “Set Food budget to $400”.
+            </p>
           )}
         </div>
       </Card>
@@ -63,15 +89,69 @@ export function BudgetTracker({ budgets }: { budgets: Budget[] }) {
           value={limit}
           onChange={(e) => setLimit(e.target.value)}
         />
+        {error && <p className="mb-3 text-sm text-rose-600">{error}</p>}
         <Button
           className="w-full"
+          disabled={saving}
           onClick={async () => {
             if (!editing) return
-            await updateBudget(editing.id, Number(limit))
-            setEditing(null)
+            setSaving(true)
+            setError('')
+            try {
+              await updateBudget(editing.id, Number(limit))
+              setEditing(null)
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Could not save budget.')
+            } finally {
+              setSaving(false)
+            }
           }}
         >
           Save budget
+        </Button>
+      </Modal>
+
+      <Modal open={adding} title="Add budget" onClose={() => setAdding(false)}>
+        <label className="mb-1 block text-sm font-semibold text-fingo-muted">Category</label>
+        <select
+          className="input-field mb-4"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        >
+          {(availableCategories.length ? availableCategories : EXPENSE_CATEGORIES).map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <label className="mb-1 block text-sm font-semibold text-fingo-muted">Monthly limit</label>
+        <input
+          className="input-field mb-4"
+          type="number"
+          min="0"
+          step="1"
+          placeholder="e.g. 400"
+          value={limit}
+          onChange={(e) => setLimit(e.target.value)}
+        />
+        {error && <p className="mb-3 text-sm text-rose-600">{error}</p>}
+        <Button
+          className="w-full"
+          disabled={saving || !limit}
+          onClick={async () => {
+            setSaving(true)
+            setError('')
+            try {
+              await setBudget(category, Number(limit))
+              setAdding(false)
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Could not save budget.')
+            } finally {
+              setSaving(false)
+            }
+          }}
+        >
+          Create budget
         </Button>
       </Modal>
     </>
