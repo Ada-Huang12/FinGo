@@ -165,12 +165,34 @@ function SubscriptionList({
   onAdd: () => void
 }) {
   const { toggleSubscription } = useData()
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const activeMonthly = subscriptions
+    .filter((s) => s.active)
+    .reduce((sum, s) => {
+      const amount = Number(s.amount)
+      if (s.billing_cycle === 'weekly') return sum + amount * (52 / 12)
+      if (s.billing_cycle === 'yearly') return sum + amount / 12
+      return sum + amount
+    }, 0)
+
+  async function onToggle(id: string) {
+    if (busyId) return
+    setBusyId(id)
+    try {
+      await toggleSubscription(id)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <Card className="p-5 sm:p-6">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-bold text-fingo-ink">Subscriptions</h2>
-          <p className="text-sm text-fingo-muted">Add yours and toggle anything you&apos;re not using</p>
+          <p className="text-sm text-fingo-muted">
+            Use the switch to pause or resume. Active ≈ {formatCurrency(activeMonthly)}/mo
+          </p>
         </div>
         <Button variant="secondary" className="!px-3 !py-2 text-sm" onClick={onAdd}>
           <Icon name="add" />
@@ -179,35 +201,61 @@ function SubscriptionList({
       </div>
       <div className="space-y-3">
         {subscriptions.map((sub) => (
-          <div key={sub.id} className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3">
+          <div
+            key={sub.id}
+            className={`flex items-center gap-3 rounded-2xl p-3 transition ${
+              sub.active ? 'bg-slate-50' : 'bg-slate-100/80 opacity-75'
+            }`}
+          >
             <div
-              className="grid h-11 w-11 place-items-center rounded-2xl text-white shadow-sm"
+              className={`grid h-11 w-11 place-items-center rounded-2xl text-white shadow-sm ${
+                sub.active ? '' : 'grayscale'
+              }`}
               style={{ background: sub.color }}
             >
               <Icon name={sub.icon} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="font-display font-bold text-fingo-ink">{sub.name}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-display font-bold text-fingo-ink">{sub.name}</p>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                    sub.active ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {sub.active ? 'Active' : 'Paused'}
+                </span>
+              </div>
               <p className="text-xs text-fingo-muted">
                 {formatCurrency(Number(sub.amount))}/
                 {sub.billing_cycle === 'monthly' ? 'mo' : sub.billing_cycle}
+                {sub.active
+                  ? ` · next ${formatShortDate(sub.next_billing_date)}`
+                  : ' · not billing while paused'}
               </p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={sub.active}
-              onClick={() => void toggleSubscription(sub.id)}
-              className={`relative h-7 w-12 rounded-full transition ${
-                sub.active ? 'bg-fingo-green' : 'bg-slate-300'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${
-                  sub.active ? 'left-[1.35rem]' : 'left-0.5'
+            <div className="flex flex-col items-end gap-1">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={sub.active}
+                aria-label={sub.active ? `Pause ${sub.name}` : `Resume ${sub.name}`}
+                disabled={busyId === sub.id}
+                onClick={() => void onToggle(sub.id)}
+                className={`relative h-7 w-12 rounded-full transition disabled:opacity-60 ${
+                  sub.active ? 'bg-fingo-green' : 'bg-slate-300'
                 }`}
-              />
-            </button>
+              >
+                <span
+                  className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${
+                    sub.active ? 'left-[1.35rem]' : 'left-0.5'
+                  }`}
+                />
+              </button>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-fingo-muted">
+                {sub.active ? 'Pause' : 'Resume'}
+              </span>
+            </div>
           </div>
         ))}
         {subscriptions.length === 0 && (

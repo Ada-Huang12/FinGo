@@ -5,10 +5,10 @@ import { Card } from '../components/ui/Card'
 import { Icon } from '../components/ui/Icon'
 
 const quickPrompts = [
-  'Any bill reminders?',
+  'I spent $40 on snacks today, log it',
+  'I earned $500 from freelance today',
   'How is my budget looking?',
   'Help me save more',
-  'Review my subscriptions',
 ]
 
 export function AiCoachPage() {
@@ -48,7 +48,7 @@ export function AiCoachPage() {
         <p className="text-sm font-semibold uppercase tracking-wide text-fingo-green">AI Coach</p>
         <h1 className="font-display text-3xl font-extrabold tracking-tight">Your friendly money buddy</h1>
         <p className="mt-1 text-fingo-muted">
-          Personalized tips, budget ideas, savings suggestions, and bill reminders.
+          Ask for tips — or tell me to log spending, income, bills, and subscriptions.
         </p>
       </section>
 
@@ -78,7 +78,7 @@ export function AiCoachPage() {
             </div>
             <div>
               <p className="font-display font-bold">FinGo Coach</p>
-              <p className="text-xs text-fingo-muted">Online · rule-based tips for your data</p>
+              <p className="text-xs text-fingo-muted">Online · can log money for you</p>
             </div>
           </div>
         </div>
@@ -104,13 +104,13 @@ export function AiCoachPage() {
         </div>
 
         <div className="space-y-3 border-t border-slate-100 bg-white p-4">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-nowrap gap-2 overflow-x-auto pb-0.5">
             {quickPrompts.map((p) => (
               <button
                 key={p}
                 type="button"
                 onClick={() => void onSend(p)}
-                className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
               >
                 {p}
               </button>
@@ -119,7 +119,7 @@ export function AiCoachPage() {
           <form onSubmit={onSubmit} className="flex gap-2">
             <input
               className="input-field"
-              placeholder="Ask about budgets, bills, goals…"
+              placeholder='Try “I spent $40 on gas today”…'
               value={input}
               onChange={(e) => setInput(e.target.value)}
             />

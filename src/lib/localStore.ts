@@ -3,6 +3,8 @@ import { EMPTY_EQUIPPED, normalizeEquipped } from './avatarCatalog'
 import { currentMonth, uid } from './format'
 import {
   defaultAvatarProfileFields,
+  EMPTY_COACH_PREFS,
+  normalizeCoachPrefs,
   type AiMessage,
   type Bill,
   type Budget,
@@ -29,6 +31,9 @@ function normalizeProfile(raw: Partial<Profile> & Pick<Profile, 'id' | 'email' |
     avatar_skin: raw.avatar_skin ?? defaults.avatar_skin,
     avatar_equipped: normalizeEquipped(raw.avatar_equipped ?? defaults.avatar_equipped),
     owned_accessories: Array.isArray(raw.owned_accessories) ? raw.owned_accessories : defaults.owned_accessories,
+    coach_prefs: normalizeCoachPrefs(raw.coach_prefs ?? EMPTY_COACH_PREFS),
+    // Existing local profiles skip the survey; new signups set this to false explicitly.
+    onboarding_completed: raw.onboarding_completed ?? true,
     created_at: raw.created_at ?? new Date().toISOString(),
   }
 }
@@ -71,6 +76,8 @@ export function createBlankAccount(
     full_name: fullName,
     avatar_url: null,
     ...defaults,
+    coach_prefs: EMPTY_COACH_PREFS,
+    onboarding_completed: false,
     created_at: new Date().toISOString(),
   })
 
@@ -81,7 +88,7 @@ export function createBlankAccount(
         id: uid(),
         user_id: userId,
         role: 'assistant',
-        content: `Hey ${fullName.split(' ')[0] || 'there'}! I'm your FinGo AI Coach. Your account starts fresh — add transactions, budgets, bills, or goals anytime, or ask me for tips.`,
+        content: `Hey ${fullName.split(' ')[0] || 'there'}! I'm your FinGo AI Coach. Your account starts fresh — add transactions, budgets, bills, or goals anytime, or tell me about your job and income so I can personalize tips.`,
         created_at: new Date().toISOString(),
       },
     ],
@@ -297,7 +304,32 @@ export function localSignOut() {
 export function localCurrentProfile(): Profile | null {
   const store = loadStore()
   if (!store.currentUserId) return null
-  return store.profiles.find((p) => p.id === store.currentUserId) ?? null
+  const profile = store.profiles.find((p) => p.id === store.currentUserId)
+  return profile ? normalizeProfile(profile) : null
+}
+
+export function localUpdateCoachPrefs(
+  prefs: Partial<import('./types').CoachPrefs>,
+  options?: { complete?: boolean },
+): Profile {
+  const store = loadStore()
+  if (!store.currentUserId) throw new Error('Not signed in.')
+  const profile = store.profiles.find((p) => p.id === store.currentUserId)
+  if (!profile) throw new Error('Profile not found.')
+  profile.coach_prefs = normalizeCoachPrefs({ ...profile.coach_prefs, ...prefs })
+  if (options?.complete) profile.onboarding_completed = true
+  saveStore(store)
+  return normalizeProfile(profile)
+}
+
+export function localCompleteOnboarding(): Profile {
+  const store = loadStore()
+  if (!store.currentUserId) throw new Error('Not signed in.')
+  const profile = store.profiles.find((p) => p.id === store.currentUserId)
+  if (!profile) throw new Error('Profile not found.')
+  profile.onboarding_completed = true
+  saveStore(store)
+  return normalizeProfile(profile)
 }
 
 export { today }

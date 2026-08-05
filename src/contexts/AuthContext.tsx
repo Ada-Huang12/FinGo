@@ -9,12 +9,20 @@ import {
 } from 'react'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import {
+  localCompleteOnboarding,
   localCurrentProfile,
   localSignIn,
   localSignOut,
   localSignUp,
+  localUpdateCoachPrefs,
 } from '../lib/localStore'
-import { defaultAvatarProfileFields, type Profile } from '../lib/types'
+import {
+  defaultAvatarProfileFields,
+  EMPTY_COACH_PREFS,
+  normalizeCoachPrefs,
+  type CoachPrefs,
+  type Profile,
+} from '../lib/types'
 import { normalizeEquipped } from '../lib/avatarCatalog'
 
 interface AuthContextValue {
@@ -26,6 +34,8 @@ interface AuthContextValue {
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
+  saveCoachPrefs: (prefs: Partial<CoachPrefs>, options?: { complete?: boolean }) => Promise<void>
+  completeOnboarding: () => Promise<void>
 }
 
 function displayNameFromAuthUser(meta: Record<string, unknown> | undefined, email: string) {
@@ -49,6 +59,9 @@ function coerceProfile(raw: Partial<Profile> & { id: string; email: string; full
     owned_accessories: Array.isArray(raw.owned_accessories)
       ? raw.owned_accessories
       : defaults.owned_accessories,
+    coach_prefs: normalizeCoachPrefs(raw.coach_prefs ?? EMPTY_COACH_PREFS),
+    // Missing column / older rows → treat as complete so login isn't blocked.
+    onboarding_completed: raw.onboarding_completed ?? true,
     created_at: raw.created_at ?? new Date().toISOString(),
   }
 }
@@ -80,6 +93,8 @@ async function ensureSupabaseProfile(
       full_name: fullName,
       avatar_url: null,
       ...defaults,
+      coach_prefs: EMPTY_COACH_PREFS,
+      onboarding_completed: false,
     })
   }
 
@@ -91,6 +106,8 @@ async function ensureSupabaseProfile(
     avatar_skin: defaults.avatar_skin,
     avatar_equipped: defaults.avatar_equipped,
     owned_accessories: defaults.owned_accessories,
+    coach_prefs: EMPTY_COACH_PREFS,
+    onboarding_completed: false,
   })
   if (error) {
     console.warn('Failed to upsert profile:', error.message)
@@ -99,13 +116,14 @@ async function ensureSupabaseProfile(
   const created = await fetchSupabaseProfile(userId)
   if (created) return created
 
-  // Last resort for UI continuity; friendships still need a real DB row.
   return coerceProfile({
     id: userId,
     email,
     full_name: fullName,
     avatar_url: null,
     ...defaults,
+    coach_prefs: EMPTY_COACH_PREFS,
+    onboarding_completed: false,
   })
 }
 
@@ -203,8 +221,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string) => {
       if (mode === 'local') {
-        const profile = localSignIn(email, password)
-        setUser(profile)
+        localSignIn(email, password)
+        setUser(localCurrentProfile())
         return
       }
       if (!supabase) throw new Error('Supabase is not configured.')
@@ -237,6 +255,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [mode])
 
+  const saveCoachPrefs = useCallback(
+    async (prefs: Partial<CoachPrefs>, options?: { complete?: boolean }) => {
+      if (mode === 'local') {
+        const profile = localUpdateCoachPrefs(prefs, options)
+        setUser(profile)
+        return
+      }
+      if (!supabase || !user) throw new Error('Not signed in.')
+      const nextPrefs = normalizeCoachPrefs({ ...user.coach_prefs, ...prefs })
+      const patch: Record<string, unknown> = { coach_prefs: nextPrefs }
+      if (options?.complete) patch.onboarding_completed = true
+      const { error } = await supabase.from('profiles').update(patch).eq('id', user.id)
+      if (error) throw error
+      setUser({
+        ...user,
+        coach_prefs: nextPrefs,
+        onboarding_completed: options?.complete ? true : user.onboarding_completed,
+      })
+    },
+    [mode, user],
+  )
+
+  const completeOnboarding = useCallback(async () => {
+    if (mode === 'local') {
+      setUser(localCompleteOnboarding())
+      return
+    }
+    if (!supabase || !user) throw new Error('Not signed in.')
+    const { error } = await supabase
+      .from('profiles')
+      .update({ onboarding_completed: true })
+      .eq('id', user.id)
+    if (error) throw error
+    setUser({ ...user, onboarding_completed: true })
+  }, [mode, user])
+
   const signOut = useCallback(async () => {
     if (mode === 'local') {
       localSignOut()
@@ -249,8 +303,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [mode])
 
   const value = useMemo(
-    () => ({ user, loading, mode, signUp, signIn, signInWithGoogle, signOut, refreshProfile }),
-    [user, loading, mode, signUp, signIn, signInWithGoogle, signOut, refreshProfile],
+    () => ({
+      user,
+      loading,
+      mode,
+      signUp,
+      signIn,
+      signInWithGoogle,
+      signOut,
+      refreshProfile,
+      saveCoachPrefs,
+      completeOnboarding,
+    }),
+    [
+      user,
+      loading,
+      mode,
+      signUp,
+      signIn,
+      signInWithGoogle,
+      signOut,
+      refreshProfile,
+      saveCoachPrefs,
+      completeOnboarding,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

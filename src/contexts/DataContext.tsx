@@ -135,7 +135,7 @@ function buildCategories(transactions: Transaction[]): CategorySlice[] {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { user, mode, refreshProfile } = useAuth()
+  const { user, mode, refreshProfile, saveCoachPrefs } = useAuth()
   const [loading, setLoading] = useState(true)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [budgets, setBudgets] = useState<Budget[]>([])
@@ -490,12 +490,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!supabase) return
     const current = subscriptions.find((s) => s.id === id)
     if (!current) return
-    const { error } = await supabase
-      .from('subscriptions')
-      .update({ active: !current.active })
-      .eq('id', id)
-    if (error) throw error
-    await refreshSupabase()
+    const nextActive = !current.active
+    setSubscriptions((prev) => prev.map((s) => (s.id === id ? { ...s, active: nextActive } : s)))
+    const { error } = await supabase.from('subscriptions').update({ active: nextActive }).eq('id', id)
+    if (error) {
+      setSubscriptions((prev) => prev.map((s) => (s.id === id ? { ...s, active: current.active } : s)))
+      throw error
+    }
   }
 
   const addSubscription: DataContextValue['addSubscription'] = async (input) => {
@@ -793,6 +794,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       avatar_skin: user.avatar_skin,
       avatar_equipped: user.avatar_equipped,
       owned_accessories: user.owned_accessories,
+      coach_prefs: user.coach_prefs,
+      onboarding_completed: user.onboarding_completed,
     })
     if (selfErr) {
       throw new Error(
@@ -827,14 +830,56 @@ export function DataProvider({ children }: { children: ReactNode }) {
       content,
       created_at: new Date().toISOString(),
     }
-    const reply = generateCoachReply(content, {
+
+    const result = generateCoachReply(content, {
       name: user.full_name,
       transactions,
       budgets,
       bills,
       subscriptions,
       goals,
+      coachPrefs: user.coach_prefs,
     })
+
+    let reply = result.reply
+    try {
+      for (const action of result.actions) {
+        if (action.kind === 'transaction') {
+          await addTransaction({
+            type: action.type,
+            amount: action.amount,
+            category: action.category,
+            description: action.description,
+            date: action.date,
+          })
+        } else if (action.kind === 'bill') {
+          await addBill({
+            name: action.name,
+            amount: action.amount,
+            due_date: action.due_date,
+            status: action.status,
+            category: action.category,
+            icon: action.icon,
+          })
+        } else if (action.kind === 'subscription') {
+          await addSubscription({
+            name: action.name,
+            amount: action.amount,
+            billing_cycle: action.billing_cycle,
+            next_billing_date: action.next_billing_date,
+            active: action.active,
+            icon: action.icon,
+            color: action.color,
+          })
+        } else if (action.kind === 'profile_prefs') {
+          await saveCoachPrefs(action.prefs)
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error && err.message ? err.message : 'Could not complete that action.'
+      reply = `I understood the request, but couldn't save it: ${message}`
+    }
+
     const assistantMsg: AiMessage = {
       id: uid(),
       user_id: user.id,

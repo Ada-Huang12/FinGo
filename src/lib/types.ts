@@ -14,7 +14,48 @@ export interface Profile {
   avatar_skin: AvatarSkin
   avatar_equipped: AvatarEquipped
   owned_accessories: string[]
+  coach_prefs: CoachPrefs
+  onboarding_completed: boolean
   created_at: string
+}
+
+export interface CoachPrefs {
+  job_title: string | null
+  yearly_income: number | null
+  monthly_income: number | null
+  money_goal: string | null
+  spend_focus: string | null
+  notes: string | null
+}
+
+export const EMPTY_COACH_PREFS: CoachPrefs = {
+  job_title: null,
+  yearly_income: null,
+  monthly_income: null,
+  money_goal: null,
+  spend_focus: null,
+  notes: null,
+}
+
+export function normalizeCoachPrefs(raw: unknown): CoachPrefs {
+  const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  const num = (v: unknown) => {
+    const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN
+    return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null
+  }
+  const str = (v: unknown) => {
+    if (typeof v !== 'string') return null
+    const t = v.trim()
+    return t ? t : null
+  }
+  return {
+    job_title: str(obj.job_title),
+    yearly_income: num(obj.yearly_income),
+    monthly_income: num(obj.monthly_income),
+    money_goal: str(obj.money_goal),
+    spend_focus: str(obj.spend_focus),
+    notes: str(obj.notes),
+  }
 }
 
 export interface Transaction {

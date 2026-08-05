@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Icon } from '../components/ui/Icon'
+import { PasswordInput } from '../components/ui/PasswordInput'
 
 const AUTH_RETURN_KEY = 'fingo_auth_return'
 
@@ -176,7 +177,7 @@ export function AuthCallbackPage() {
   useEffect(() => {
     if (oauthError) return
     if (!loading && user) {
-      navigate('/', { replace: true })
+      navigate(user.onboarding_completed ? '/' : '/onboarding', { replace: true })
     }
   }, [oauthError, loading, user, navigate])
 
@@ -224,7 +225,9 @@ export function LoginPage() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  if (!loading && user) return <Navigate to="/" replace />
+  if (!loading && user) {
+    return <Navigate to={user.onboarding_completed ? '/' : '/onboarding'} replace />
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -232,6 +235,8 @@ export function LoginPage() {
     setBusy(true)
     try {
       await signIn(email.trim(), password)
+      // Destination is handled by Navigate above after user state updates;
+      // fall back in case state is already set.
       navigate('/')
     } catch (err) {
       setError(errorMessage(err, 'Login failed.'))
@@ -262,15 +267,14 @@ export function LoginPage() {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-semibold text-fingo-muted">Password</label>
-          <input
-            className="input-field"
-            type="password"
+          <PasswordInput
+            label="Password"
             required
             minLength={6}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
+            autoComplete="current-password"
           />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
@@ -297,7 +301,9 @@ export function SignupPage() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  if (!loading && user) return <Navigate to="/" replace />
+  if (!loading && user) {
+    return <Navigate to={user.onboarding_completed ? '/' : '/onboarding'} replace />
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -305,7 +311,7 @@ export function SignupPage() {
     setBusy(true)
     try {
       await signUp(fullName.trim(), email.trim(), password)
-      navigate('/')
+      navigate('/onboarding')
     } catch (err) {
       setError(errorMessage(err, 'Sign up failed.'))
     } finally {
@@ -345,15 +351,14 @@ export function SignupPage() {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-semibold text-fingo-muted">Password</label>
-          <input
-            className="input-field"
-            type="password"
+          <PasswordInput
+            label="Password"
             required
             minLength={6}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="At least 6 characters"
+            autoComplete="new-password"
           />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
