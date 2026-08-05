@@ -96,6 +96,7 @@ interface DataContextValue {
   declineFriendship: (id: string) => Promise<void>
   sendFriendRequest: (email: string) => Promise<void>
   sendAiMessage: (content: string) => Promise<void>
+  clearAiChat: () => Promise<void>
   purchaseAccessory: (accessoryId: string) => Promise<void>
   equipAccessory: (accessoryId: string | null, slot: AccessorySlot) => Promise<void>
   setAvatarSkin: (skin: AvatarSkin) => Promise<void>
@@ -965,6 +966,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await refreshSupabase()
   }
 
+  const clearAiChat: DataContextValue['clearAiChat'] = async () => {
+    if (!user) return
+    if (mode === 'local') {
+      const store = loadStore()
+      store.aiMessages = store.aiMessages.filter((m) => m.user_id !== user.id)
+      saveStore(store)
+      refreshLocal()
+      return
+    }
+    if (!supabase) return
+    const { error } = await supabase.from('ai_messages').delete().eq('user_id', user.id)
+    if (error) throw error
+    setAiMessages([])
+  }
+
   const chartData = useMemo(() => buildChart(transactions), [transactions])
   const categoryData = useMemo(() => buildCategories(transactions), [transactions])
 
@@ -998,6 +1014,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     declineFriendship,
     sendFriendRequest,
     sendAiMessage,
+    clearAiChat,
     purchaseAccessory,
     equipAccessory,
     setAvatarSkin,

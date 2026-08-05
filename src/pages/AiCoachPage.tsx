@@ -12,9 +12,10 @@ const quickPrompts = [
 ]
 
 export function AiCoachPage() {
-  const { aiMessages, sendAiMessage, loading, bills, budgets, goals } = useData()
+  const { aiMessages, sendAiMessage, clearAiChat, loading, bills, budgets, goals } = useData()
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -35,6 +36,16 @@ export function AiCoachPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     await onSend(input)
+  }
+
+  async function onClearChat() {
+    if (clearing || aiMessages.length === 0) return
+    setClearing(true)
+    try {
+      await clearAiChat()
+    } finally {
+      setClearing(false)
+    }
   }
 
   const overdue = bills.filter((b) => b.status === 'overdue').length
@@ -129,6 +140,19 @@ export function AiCoachPage() {
           </form>
         </div>
       </Card>
+
+      <div className="flex justify-center">
+        <Button
+          type="button"
+          variant="ghost"
+          className="text-sm text-fingo-muted"
+          disabled={clearing || aiMessages.length === 0}
+          onClick={() => void onClearChat()}
+        >
+          <Icon name="delete" className="text-base" />
+          {clearing ? 'Clearing…' : 'Clear chat'}
+        </Button>
+      </div>
     </div>
   )
 }
