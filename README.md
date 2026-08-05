@@ -48,6 +48,13 @@ That creates tables, profile auto-creation on signup, contribution sync triggers
 
 - Enable **Email** provider in Authentication → Providers.
 - For local development you can disable “Confirm email” under Authentication → Providers → Email so sign-up logs in immediately.
+- To use **Continue with Google**:
+  1. Enable **Google** under Authentication → Providers and paste your Google Cloud OAuth Client ID + Secret.
+  2. In Google Cloud Console, add authorized redirect URI:  
+     `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback`
+  3. In Supabase → Authentication → URL Configuration, add your app URLs to **Redirect URLs**  
+     (e.g. `http://127.0.0.1:5173/**`, `http://localhost:5173/**`, and your Vercel URL).
+  4. Optionally run `supabase/migrations/007_google_oauth_profile_metadata.sql` so Google `name` / `picture` fill the profile.
 
 ## Deploy to Vercel
 

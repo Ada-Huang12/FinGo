@@ -6,7 +6,7 @@ import { BillsPage } from './pages/BillsPage'
 import { GoalsPage } from './pages/GoalsPage'
 import { SocialPage } from './pages/SocialPage'
 import { AiCoachPage } from './pages/AiCoachPage'
-import { LoginPage, SignupPage } from './pages/AuthPages'
+import { LoginPage, SignupPage, AuthCallbackPage } from './pages/AuthPages'
 
 function ProtectedRoute() {
   const { user, loading } = useAuth()
@@ -27,6 +27,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
             <Route index element={<HomePage />} />

@@ -3,6 +3,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { useData } from '../contexts/DataContext'
 import { formatCurrency, formatDate, percent } from '../lib/format'
 import { AvatarShopSection } from '../components/social/AvatarShop'
+import { ThemePicker } from '../components/social/ThemePicker'
+import { TransactionStreakCard } from '../components/social/TransactionStreakCard'
 import { AvatarFigure } from '../components/avatar/AvatarFigure'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -70,7 +72,7 @@ export function SocialPage() {
           <p className="text-sm font-semibold uppercase tracking-wide text-fingo-blue">Social</p>
           <h1 className="font-display text-3xl font-extrabold tracking-tight">Grow together</h1>
           <p className="mt-1 text-fingo-muted">
-            Avatar shop, friends, shared goals, contributions, and challenges.
+            Avatar shop, logging streaks, theme colors, friends, and challenges.
           </p>
         </div>
         <Button variant="blue" onClick={() => setOpen(true)}>
@@ -80,6 +82,10 @@ export function SocialPage() {
       </section>
 
       <AvatarShopSection />
+
+      <TransactionStreakCard />
+
+      <ThemePicker />
 
       {message && (
         <Card className="bg-fingo-green-soft p-3 text-sm font-semibold text-fingo-green-dark">{message}</Card>

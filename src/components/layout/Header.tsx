@@ -7,7 +7,6 @@ const nav = [
   { to: '/bills', label: 'Bills', icon: 'calendar_month' },
   { to: '/goals', label: 'Goals', icon: 'flag' },
   { to: '/social', label: 'Social', icon: 'group' },
-  { to: '/ai-coach', label: 'AI Coach', icon: 'smart_toy' },
 ]
 
 export function Header() {

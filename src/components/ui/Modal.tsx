@@ -8,12 +8,15 @@ export function Modal({
   onClose,
   children,
   wide = false,
+  size,
 }: {
   open: boolean
   title: string
   onClose: () => void
   children: ReactNode
   wide?: boolean
+  /** Overrides `wide` when set. */
+  size?: 'md' | 'lg' | 'xl'
 }) {
   useEffect(() => {
     if (!open) return
@@ -41,7 +44,11 @@ export function Modal({
       />
       <div
         className={`animate-pop relative max-h-[min(90vh,720px)] w-full overflow-y-auto ${
-          wide ? 'max-w-lg' : 'max-w-md'
+          size === 'xl'
+            ? 'max-w-3xl'
+            : size === 'lg' || wide
+              ? 'max-w-lg'
+              : 'max-w-md'
         } rounded-3xl bg-white p-5 shadow-2xl sm:p-6`}
         role="dialog"
         aria-modal

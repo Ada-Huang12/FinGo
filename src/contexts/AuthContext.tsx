@@ -23,8 +23,15 @@ interface AuthContextValue {
   mode: 'supabase' | 'local'
   signUp: (fullName: string, email: string, password: string) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
+  signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
+}
+
+function displayNameFromAuthUser(meta: Record<string, unknown> | undefined, email: string) {
+  const fullName = typeof meta?.full_name === 'string' ? meta.full_name.trim() : ''
+  const name = typeof meta?.name === 'string' ? meta.name.trim() : ''
+  return fullName || name || email.split('@')[0] || 'User'
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -119,8 +126,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
     const email = data.user.email ?? ''
-    const fullName =
-      data.user.user_metadata?.full_name ?? email.split('@')[0] ?? 'User'
+    const fullName = displayNameFromAuthUser(
+      data.user.user_metadata as Record<string, unknown> | undefined,
+      email,
+    )
     const profile = await ensureSupabaseProfile(data.user.id, email, fullName)
     setUser(profile)
   }, [mode])
@@ -135,10 +144,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const { data } = await supabase.auth.getSession()
           if (data.session?.user && mounted) {
             const email = data.session.user.email ?? ''
-            const fullName =
-              data.session.user.user_metadata?.full_name ??
-              email.split('@')[0] ??
-              'User'
+            const fullName = displayNameFromAuthUser(
+              data.session.user.user_metadata as Record<string, unknown> | undefined,
+              email,
+            )
             const profile = await ensureSupabaseProfile(
               data.session.user.id,
               email,
@@ -152,8 +161,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               return
             }
             const email = session.user.email ?? ''
-            const fullName =
-              session.user.user_metadata?.full_name ?? email.split('@')[0] ?? 'User'
+            const fullName = displayNameFromAuthUser(
+              session.user.user_metadata as Record<string, unknown> | undefined,
+              email,
+            )
             const profile = await ensureSupabaseProfile(session.user.id, email, fullName)
             setUser(profile)
           })
@@ -204,6 +215,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [mode, refreshProfile],
   )
 
+  const signInWithGoogle = useCallback(async () => {
+    if (mode === 'local') {
+      throw new Error('Google sign-in needs Supabase. Add your project URL and anon key to .env.local.')
+    }
+    if (!supabase) throw new Error('Supabase is not configured.')
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+    if (error) {
+      const msg = error.message.toLowerCase()
+      if (msg.includes('unsupported provider') || msg.includes('provider is not enabled')) {
+        throw new Error(
+          'Google sign-in is not enabled yet. In Supabase: Authentication → Providers → Google → enable it and paste your Google Client ID + Secret.',
+        )
+      }
+      throw error
+    }
+  }, [mode])
+
   const signOut = useCallback(async () => {
     if (mode === 'local') {
       localSignOut()
@@ -216,8 +249,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [mode])
 
   const value = useMemo(
-    () => ({ user, loading, mode, signUp, signIn, signOut, refreshProfile }),
-    [user, loading, mode, signUp, signIn, signOut, refreshProfile],
+    () => ({ user, loading, mode, signUp, signIn, signInWithGoogle, signOut, refreshProfile }),
+    [user, loading, mode, signUp, signIn, signInWithGoogle, signOut, refreshProfile],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

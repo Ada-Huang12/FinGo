@@ -5,6 +5,7 @@ import { IncomeSpendingChart } from '../components/charts/IncomeSpendingChart'
 import { CategoryChart } from '../components/charts/CategoryChart'
 import { BudgetTracker } from '../components/home/BudgetTracker'
 import { AiTipCard } from '../components/home/AiTipCard'
+import { AiCoachFab } from '../components/home/AiCoachFab'
 import { AddTransactionButton } from '../components/home/AddTransactionButton'
 import { ImportScanButton } from '../components/home/ImportScanButton'
 import { Card } from '../components/ui/Card'
@@ -40,6 +41,8 @@ export function HomePage() {
           <ImportScanButton />
         </div>
       </section>
+
+      <AiTipCard name={user?.full_name ?? 'friend'} />
 
       <section className="grid gap-4 sm:grid-cols-3">
         <Card className="p-4">
@@ -77,7 +80,7 @@ export function HomePage() {
         <CategoryChart data={categoryData} />
       </section>
 
-      <AiTipCard name={user?.full_name ?? 'friend'} />
+      <AiCoachFab />
     </div>
   )
 }
