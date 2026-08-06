@@ -19,6 +19,7 @@ import {
 } from '../lib/avatarCatalog'
 import { CATEGORY_COLORS, currentMonth, uid } from '../lib/format'
 import { loadStore, saveStore } from '../lib/localStore'
+import { buildQuestStatuses, getQuestById, questPeriodKey, type QuestClaim, type QuestStatus } from '../lib/quests'
 import { supabase } from '../lib/supabase'
 import type {
   AiMessage,
@@ -50,6 +51,8 @@ interface DataContextValue {
   friends: Profile[]
   challenges: Challenge[]
   aiMessages: AiMessage[]
+  questClaims: QuestClaim[]
+  questStatuses: QuestStatus[]
   chartData: MonthlyChartPoint[]
   categoryData: CategorySlice[]
   lastPointsEarned: number | null
@@ -97,6 +100,7 @@ interface DataContextValue {
   sendFriendRequest: (email: string) => Promise<void>
   sendAiMessage: (content: string) => Promise<void>
   clearAiChat: () => Promise<void>
+  claimQuest: (questId: string) => Promise<void>
   purchaseAccessory: (accessoryId: string) => Promise<void>
   equipAccessory: (accessoryId: string | null, slot: AccessorySlot) => Promise<void>
   setAvatarSkin: (skin: AvatarSkin) => Promise<void>
@@ -149,6 +153,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [friends, setFriends] = useState<Profile[]>([])
   const [challenges, setChallenges] = useState<Challenge[]>([])
   const [aiMessages, setAiMessages] = useState<AiMessage[]>([])
+  const [questClaims, setQuestClaims] = useState<QuestClaim[]>([])
   const [lastPointsEarned, setLastPointsEarned] = useState<number | null>(null)
   const activeUserIdRef = useRef<string | null>(null)
 
@@ -163,6 +168,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setFriends([])
     setChallenges([])
     setAiMessages([])
+    setQuestClaims([])
     setLastPointsEarned(null)
   }, [])
 
@@ -235,6 +241,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setFriends(friendProfiles)
     setChallenges(userChallenges)
     setAiMessages(store.aiMessages.filter((m) => m.user_id === uid_))
+    setQuestClaims(
+      (store.questClaims ?? [])
+        .filter((c) => c.user_id === uid_)
+        .map(({ quest_id, period_key, xp_awarded, claimed_at }) => ({
+          quest_id,
+          period_key,
+          xp_awarded,
+          claimed_at,
+        })),
+    )
   }, [user])
 
   const refreshSupabase = useCallback(async () => {
@@ -253,6 +269,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       friendRes,
       challengeRes,
       aiRes,
+      questRes,
     ] = await Promise.all([
       supabase.from('transactions').select('*').eq('user_id', uid_).order('date', { ascending: false }),
       supabase.from('budgets').select('*').eq('user_id', uid_).eq('month', month),
@@ -264,6 +281,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from('friendships').select('*'),
       supabase.from('challenges').select('*').order('created_at', { ascending: false }),
       supabase.from('ai_messages').select('*').eq('user_id', uid_).order('created_at'),
+      supabase.from('quest_claims').select('*').eq('user_id', uid_),
     ])
 
     const memberships = (memberRes.data ?? []) as { goal_id: string; user_id: string; role: string; id: string; joined_at: string }[]
@@ -327,6 +345,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setFriends(friendProfiles)
     setChallenges((challengeRes.data ?? []) as Challenge[])
     setAiMessages((aiRes.data ?? []) as AiMessage[])
+    setQuestClaims(
+      ((questRes.data ?? []) as Array<{
+        quest_id: string
+        period_key: string
+        xp_awarded: number
+        claimed_at: string
+      }>).map((c) => ({
+        quest_id: c.quest_id,
+        period_key: c.period_key,
+        xp_awarded: Number(c.xp_awarded),
+        claimed_at: c.claimed_at,
+      })),
+    )
   }, [user])
 
   const refresh = useCallback(async () => {
@@ -640,7 +671,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
           const earned = goalCompletionPoints(Number(goal.target_amount))
           goal.points_awarded = true
           const profile = store.profiles.find((p) => p.id === user.id)
-          if (profile) profile.points = Number(profile.points) + earned
+          if (profile) {
+            profile.points = Number(profile.points) + earned
+            profile.xp = Number(profile.xp ?? 0) + earned
+          }
           setLastPointsEarned(earned)
         }
       }
@@ -667,12 +701,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
         await supabase.from('goals').update({ points_awarded: true }).eq('id', goalId)
         const { data: profile } = await supabase
           .from('profiles')
-          .select('points')
+          .select('points, xp')
           .eq('id', user.id)
           .maybeSingle()
         await supabase
           .from('profiles')
-          .update({ points: Number(profile?.points ?? 0) + earned })
+          .update({
+            points: Number(profile?.points ?? 0) + earned,
+            xp: Number(profile?.xp ?? 0) + earned,
+          })
           .eq('id', user.id)
         setLastPointsEarned(earned)
         await refreshProfile()
@@ -892,6 +929,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     }
 
+    // Show the user bubble immediately while the coach (Puter) thinks.
+    setAiMessages((prev) => [...prev, userMsg])
+
     const result = await generateCoachReply(content, {
       name: user.full_name,
       transactions,
@@ -1001,8 +1041,97 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setAiMessages([])
   }
 
+  const claimQuest: DataContextValue['claimQuest'] = async (questId) => {
+    if (!user) return
+    const quest = getQuestById(questId)
+    if (!quest) throw new Error('Quest not found.')
+
+    const statuses = buildQuestStatuses(questClaims, {
+      transactions,
+      budgets,
+      bills,
+      goals,
+      contributions,
+      userId: user.id,
+    })
+    const status = statuses.find((s) => s.quest.id === questId)
+    if (!status?.claimable) throw new Error('This quest is not ready to claim yet.')
+
+    const periodKey = questPeriodKey(quest.period)
+    const claimedAt = new Date().toISOString()
+
+    if (mode === 'local') {
+      const store = loadStore()
+      if (!store.questClaims) store.questClaims = []
+      const already = store.questClaims.some(
+        (c) => c.user_id === user.id && c.quest_id === questId && c.period_key === periodKey,
+      )
+      if (already) throw new Error('Quest already claimed for this period.')
+      store.questClaims.push({
+        id: uid(),
+        user_id: user.id,
+        quest_id: questId,
+        period_key: periodKey,
+        xp_awarded: quest.xp,
+        claimed_at: claimedAt,
+      })
+      const profile = store.profiles.find((p) => p.id === user.id)
+      if (profile) {
+        profile.xp = Number(profile.xp ?? 0) + quest.xp
+        profile.points = Number(profile.points) + quest.xp
+      }
+      saveStore(store)
+      setLastPointsEarned(quest.xp)
+      refreshLocal()
+      await refreshProfile()
+      return
+    }
+
+    if (!supabase) return
+    const { error: claimErr } = await supabase.from('quest_claims').insert({
+      user_id: user.id,
+      quest_id: questId,
+      period_key: periodKey,
+      xp_awarded: quest.xp,
+      claimed_at: claimedAt,
+    })
+    if (claimErr) {
+      if (claimErr.code === '23505') throw new Error('Quest already claimed for this period.')
+      throw new Error(claimErr.message || 'Could not claim quest.')
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('points, xp')
+      .eq('id', user.id)
+      .maybeSingle()
+    const { error: xpErr } = await supabase
+      .from('profiles')
+      .update({
+        points: Number(profile?.points ?? 0) + quest.xp,
+        xp: Number(profile?.xp ?? 0) + quest.xp,
+      })
+      .eq('id', user.id)
+    if (xpErr) throw new Error(xpErr.message || 'Could not award XP.')
+
+    setLastPointsEarned(quest.xp)
+    await refreshProfile()
+    await refreshSupabase()
+  }
+
   const chartData = useMemo(() => buildChart(transactions), [transactions])
   const categoryData = useMemo(() => buildCategories(transactions), [transactions])
+  const questStatuses = useMemo(() => {
+    if (!user) return []
+    return buildQuestStatuses(questClaims, {
+      transactions,
+      budgets,
+      bills,
+      goals,
+      contributions,
+      userId: user.id,
+    })
+  }, [user, questClaims, transactions, budgets, bills, goals, contributions])
 
   const value: DataContextValue = {
     loading,
@@ -1016,6 +1145,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     friends,
     challenges,
     aiMessages,
+    questClaims,
+    questStatuses,
     chartData,
     categoryData,
     lastPointsEarned,
@@ -1035,6 +1166,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     sendFriendRequest,
     sendAiMessage,
     clearAiChat,
+    claimQuest,
     purchaseAccessory,
     equipAccessory,
     setAvatarSkin,

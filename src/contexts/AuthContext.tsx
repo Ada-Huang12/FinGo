@@ -54,6 +54,7 @@ function coerceProfile(raw: Partial<Profile> & { id: string; email: string; full
     full_name: raw.full_name,
     avatar_url: raw.avatar_url ?? null,
     points: Number(raw.points ?? defaults.points),
+    xp: Number(raw.xp ?? defaults.xp),
     avatar_skin: raw.avatar_skin ?? defaults.avatar_skin,
     avatar_equipped: normalizeEquipped(raw.avatar_equipped ?? defaults.avatar_equipped),
     owned_accessories: Array.isArray(raw.owned_accessories)
@@ -103,6 +104,7 @@ async function ensureSupabaseProfile(
     email,
     full_name: fullName,
     points: defaults.points,
+    xp: defaults.xp,
     avatar_skin: defaults.avatar_skin,
     avatar_equipped: defaults.avatar_equipped,
     owned_accessories: defaults.owned_accessories,

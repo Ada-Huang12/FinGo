@@ -32,7 +32,7 @@ export function AiCoachPage() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [aiMessages])
+  }, [aiMessages, sending])
 
   useEffect(() => {
     setPuterSignedIn(puter.auth.isSignedIn())
@@ -183,6 +183,14 @@ export function AiCoachPage() {
               </div>
             )
           })}
+          {sending && (
+            <div className="flex justify-start" aria-live="polite" aria-label="Coach is typing">
+              <div className="flex items-center gap-2 rounded-3xl rounded-bl-md bg-white px-3 py-2.5 text-fingo-muted shadow-sm">
+                <Icon name="progress_activity" className="animate-spin text-[1.25rem] text-fingo-green" />
+                <span className="text-xs font-semibold">Thinking…</span>
+              </div>
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
 

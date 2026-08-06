@@ -1,6 +1,7 @@
 import { addDays, format, subMonths } from 'date-fns'
 import { EMPTY_EQUIPPED, normalizeEquipped } from './avatarCatalog'
 import { currentMonth, uid } from './format'
+import type { QuestClaim } from './quests'
 import {
   defaultAvatarProfileFields,
   EMPTY_COACH_PREFS,
@@ -28,6 +29,7 @@ function normalizeProfile(raw: Partial<Profile> & Pick<Profile, 'id' | 'email' |
     full_name: raw.full_name,
     avatar_url: raw.avatar_url ?? null,
     points: Number(raw.points ?? defaults.points),
+    xp: Number(raw.xp ?? defaults.xp),
     avatar_skin: raw.avatar_skin ?? defaults.avatar_skin,
     avatar_equipped: normalizeEquipped(raw.avatar_equipped ?? defaults.avatar_equipped),
     owned_accessories: Array.isArray(raw.owned_accessories) ? raw.owned_accessories : defaults.owned_accessories,
@@ -53,6 +55,7 @@ export interface LocalStore {
   challenges: Challenge[]
   challengeParticipants: { challenge_id: string; user_id: string; progress: number }[]
   aiMessages: AiMessage[]
+  questClaims: (QuestClaim & { id: string; user_id: string })[]
 }
 
 function today() {
@@ -224,6 +227,7 @@ export function createDemoData(userId: string, email: string, fullName: string):
         created_at: new Date().toISOString(),
       },
     ],
+    questClaims: [],
   }
 }
 
@@ -243,6 +247,7 @@ function emptyStore(): LocalStore {
     challenges: [],
     challengeParticipants: [],
     aiMessages: [],
+    questClaims: [],
   }
 }
 
@@ -259,6 +264,7 @@ export function loadStore(): LocalStore {
       ...g,
       points_awarded: Boolean(g.points_awarded),
     }))
+    parsed.questClaims = parsed.questClaims ?? []
     return parsed
   } catch {
     return emptyStore()

@@ -11,6 +11,8 @@ export interface Profile {
   full_name: string
   avatar_url: string | null
   points: number
+  /** Lifetime XP for leveling (never decreases when spending shop points). */
+  xp: number
   avatar_skin: AvatarSkin
   avatar_equipped: AvatarEquipped
   owned_accessories: string[]
@@ -185,6 +187,7 @@ export interface CategorySlice {
 export function defaultAvatarProfileFields() {
   return {
     points: 0,
+    xp: 0,
     avatar_skin: 'peach' as AvatarSkin,
     avatar_equipped: {
       hat: null,

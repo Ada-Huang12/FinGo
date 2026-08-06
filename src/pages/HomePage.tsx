@@ -6,6 +6,8 @@ import { CategoryChart } from '../components/charts/CategoryChart'
 import { BudgetTracker } from '../components/home/BudgetTracker'
 import { AiTipCard } from '../components/home/AiTipCard'
 import { AiCoachFab } from '../components/home/AiCoachFab'
+import { LevelProgressCard } from '../components/home/LevelProgressCard'
+import { QuestsCard } from '../components/home/QuestsCard'
 import { AddTransactionButton } from '../components/home/AddTransactionButton'
 import { ImportScanButton } from '../components/home/ImportScanButton'
 import { Card } from '../components/ui/Card'
@@ -13,7 +15,8 @@ import { Icon } from '../components/ui/Icon'
 
 export function HomePage() {
   const { user } = useAuth()
-  const { chartData, categoryData, budgets, transactions, loading } = useData()
+  const { chartData, categoryData, budgets, transactions, loading, lastPointsEarned, clearPointsToast } =
+    useData()
 
   const month = currentMonth()
   const monthTx = transactions.filter((t) => String(t.date).startsWith(month))
@@ -42,7 +45,21 @@ export function HomePage() {
         </div>
       </section>
 
+      {lastPointsEarned != null && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-fingo-green-soft px-4 py-3 text-sm text-fingo-ink">
+          <span className="font-semibold">+{lastPointsEarned} XP earned!</span>
+          <button type="button" className="font-semibold text-fingo-muted" onClick={clearPointsToast}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <AiTipCard name={user?.full_name ?? 'friend'} />
+
+      <section className="grid gap-5 lg:grid-cols-2">
+        <LevelProgressCard />
+        <QuestsCard />
+      </section>
 
       <section className="grid gap-4 sm:grid-cols-3">
         <Card className="p-4">
