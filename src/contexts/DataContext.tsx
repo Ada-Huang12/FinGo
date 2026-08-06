@@ -892,7 +892,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       created_at: new Date().toISOString(),
     }
 
-    const result = generateCoachReply(content, {
+    const result = await generateCoachReply(content, {
       name: user.full_name,
       transactions,
       budgets,
@@ -900,6 +900,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       subscriptions,
       goals,
       coachPrefs: user.coach_prefs,
+      recentMessages: aiMessages.slice(-8).map((m) => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content,
+      })),
     })
 
     let reply = result.reply
@@ -949,6 +953,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       role: 'assistant',
       content: reply,
       created_at: new Date().toISOString(),
+      provider: result.provider,
+      model: result.model ?? null,
     }
 
     if (mode === 'local') {
@@ -964,6 +970,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
       { user_id: user.id, role: 'assistant', content: reply },
     ])
     await refreshSupabase()
+    setAiMessages((prev) => {
+      const next = [...prev]
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (next[i].role === 'assistant' && next[i].content === reply) {
+          next[i] = {
+            ...next[i],
+            provider: result.provider,
+            model: result.model ?? null,
+          }
+          break
+        }
+      }
+      return next
+    })
   }
 
   const clearAiChat: DataContextValue['clearAiChat'] = async () => {

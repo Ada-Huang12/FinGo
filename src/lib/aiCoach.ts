@@ -1,3 +1,4 @@
+import { puter } from '@heyputer/puter.js'
 import { inferCategory } from './importParsers'
 import { EXPENSE_CATEGORIES, formatCurrency, formatShortDate, todayISO } from './format'
 import type {
@@ -53,7 +54,12 @@ export type CoachAction =
 export interface CoachResult {
   reply: string
   actions: CoachAction[]
+  provider: 'puter' | 'local' | 'action'
+  model?: string | null
 }
+
+/** Model used for Puter conversational replies. */
+export const PUTER_COACH_MODEL = 'gpt-5-nano'
 
 function formatLocalDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -578,24 +584,116 @@ function prefsBlurb(prefs: CoachPrefs): string {
   return parts.length ? ` With your profile (${parts.join('; ')}), ` : ' '
 }
 
-export function generateCoachReply(
-  prompt: string,
-  ctx: {
-    name: string
-    transactions: Transaction[]
-    budgets: Budget[]
-    bills: Bill[]
-    subscriptions: Subscription[]
-    goals: Goal[]
-    coachPrefs?: CoachPrefs
-  },
-): CoachResult {
-  const intent = parseCoachIntent(prompt)
-  if (intent) {
-    if ('needAmount' in intent) return { reply: intent.reply, actions: [] }
-    return { reply: confirmAction(intent), actions: [intent] }
+type CoachContext = {
+  name: string
+  transactions: Transaction[]
+  budgets: Budget[]
+  bills: Bill[]
+  subscriptions: Subscription[]
+  goals: Goal[]
+  coachPrefs?: CoachPrefs
+  recentMessages?: { role: 'user' | 'assistant'; content: string }[]
+}
+
+function buildSnapshot(ctx: CoachContext): string {
+  const prefs = ctx.coachPrefs
+  const income = ctx.transactions.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+  const expenses = ctx.transactions.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+  const overdue = ctx.bills.filter((b) => b.status === 'overdue')
+  const pending = ctx.bills.filter((b) => b.status === 'pending')
+  const activeSubs = ctx.subscriptions.filter((s) => s.active)
+  const subTotal = activeSubs.reduce((s, sub) => s + sub.amount, 0)
+  const budgetLines =
+    ctx.budgets.length === 0
+      ? 'none set this month'
+      : ctx.budgets
+          .map(
+            (b) =>
+              `${b.category}: ${formatCurrency(b.spent_amount)} / ${formatCurrency(b.limit_amount)}`,
+          )
+          .join('; ')
+  const goalLines =
+    ctx.goals.length === 0
+      ? 'none'
+      : ctx.goals
+          .slice(0, 4)
+          .map((g) => `${g.title}: ${formatCurrency(g.current_amount)} / ${formatCurrency(g.target_amount)}`)
+          .join('; ')
+
+  return [
+    `User: ${ctx.name}`,
+    `Tracked income: ${formatCurrency(income)}; spending: ${formatCurrency(expenses)}`,
+    `Budgets: ${budgetLines}`,
+    `Bills: ${overdue.length} overdue, ${pending.length} pending`,
+    `Active subscriptions: ${activeSubs.length} (~${formatCurrency(subTotal)}/mo)`,
+    `Goals: ${goalLines}`,
+    prefs ? `Coach profile:${prefsBlurb(prefs).replace(/^ With your profile/, '')}` : 'Coach profile: not set',
+  ].join('\n')
+}
+
+function extractPuterText(response: unknown): string {
+  if (typeof response === 'string') return response.trim()
+  if (!response || typeof response !== 'object') return ''
+
+  const asRecord = response as Record<string, unknown>
+  const message = asRecord.message
+  if (typeof message === 'string') return message.trim()
+  if (message && typeof message === 'object') {
+    const content = (message as { content?: unknown }).content
+    if (typeof content === 'string') return content.trim()
+    if (Array.isArray(content)) {
+      return content
+        .map((part) => {
+          if (typeof part === 'string') return part
+          if (part && typeof part === 'object' && 'text' in part) {
+            return String((part as { text: unknown }).text ?? '')
+          }
+          return ''
+        })
+        .join('')
+        .trim()
+    }
   }
 
+  if (typeof asRecord.text === 'string') return asRecord.text.trim()
+  return ''
+}
+
+async function askPuterCoach(prompt: string, ctx: CoachContext): Promise<string | null> {
+  if (!puter.auth.isSignedIn()) {
+    return null
+  }
+
+  const system = [
+    'You are FinGo Coach, a friendly personal finance buddy inside the FinGo habit tracker.',
+    'Use only the account snapshot below — do not invent balances, bills, or goals.',
+    'Keep replies short (2–4 sentences), warm, and practical.',
+    'Users can also ask you to log money with phrases like “I spent $40 on gas today”, “Set Food budget to $400”, “Schedule a rent bill for $1200 due on the 1st”, or “Add Netflix subscription for $15.99 monthly”.',
+    'If they want an action you cannot confirm from this chat turn, tell them the exact phrase to try.',
+    '',
+    'Account snapshot:',
+    buildSnapshot(ctx),
+  ].join('\n')
+
+  const history = (ctx.recentMessages ?? []).slice(-8).map((m) => ({
+    role: m.role,
+    content: m.content,
+    images: [] as [],
+  }))
+
+  const response = await puter.ai.chat(
+    [
+      { role: 'system', content: system, images: [] },
+      ...history,
+      { role: 'user', content: prompt, images: [] },
+    ],
+    { model: PUTER_COACH_MODEL },
+  )
+  const text = extractPuterText(response)
+  return text || null
+}
+
+function localCoachReply(prompt: string, ctx: CoachContext): CoachResult {
   const prefs = ctx.coachPrefs
   const q = prompt.toLowerCase()
   const income = ctx.transactions.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0)
@@ -611,40 +709,23 @@ export function generateCoachReply(
     (a, b) => b.current_amount / b.target_amount - a.current_amount / a.target_amount,
   )[0]
 
+  let reply: string
   if (/\b(my (job|income|profile|survey)|what do you know about me)\b/i.test(q) && prefs) {
     if (!prefs.job_title && prefs.yearly_income == null && !prefs.money_goal) {
-      return {
-        reply: `I don’t have coach-profile details yet. Tell me something like “I work as a nurse and make $70,000 a year” or “Update my money goal to build an emergency fund”.`,
-        actions: [],
-      }
+      reply = `I don’t have coach-profile details yet. Tell me something like “I work as a nurse and make $70,000 a year” or “Update my money goal to build an emergency fund”.`
+    } else {
+      reply = `Here’s what I’m using for personalized tips:${prefsBlurb(prefs).replace(/^ With your profile/, '')} You can change any of this anytime in chat.`
     }
-    return {
-      reply: `Here’s what I’m using for personalized tips:${prefsBlurb(prefs).replace(/^ With your profile/, '')} You can change any of this anytime in chat.`,
-      actions: [],
-    }
-  }
-
-  if (q.includes('bill') || q.includes('remind')) {
+  } else if (q.includes('bill') || q.includes('remind')) {
     if (overdue.length) {
-      return {
-        reply: `Heads up — you have ${overdue.length} overdue bill${overdue.length > 1 ? 's' : ''}: ${overdue.map((b) => `${b.name} (${formatCurrency(b.amount)})`).join(', ')}. Paying those first protects your credit and frees up mental space.`,
-        actions: [],
-      }
-    }
-    if (pending.length) {
+      reply = `Heads up — you have ${overdue.length} overdue bill${overdue.length > 1 ? 's' : ''}: ${overdue.map((b) => `${b.name} (${formatCurrency(b.amount)})`).join(', ')}. Paying those first protects your credit and frees up mental space.`
+    } else if (pending.length) {
       const next = [...pending].sort((a, b) => a.due_date.localeCompare(b.due_date))[0]
-      return {
-        reply: `You have ${pending.length} upcoming bill${pending.length > 1 ? 's' : ''}. Next up: ${next.name} for ${formatCurrency(next.amount)}. You can also say “Schedule a wifi bill for $60 due on the 15th”.`,
-        actions: [],
-      }
+      reply = `You have ${pending.length} upcoming bill${pending.length > 1 ? 's' : ''}. Next up: ${next.name} for ${formatCurrency(next.amount)}. You can also say “Schedule a wifi bill for $60 due on the 15th”.`
+    } else {
+      reply = `Nice — no overdue bills right now. Want me to schedule one? Try “Schedule a rent bill for $1200 due on the 1st”.`
     }
-    return {
-      reply: `Nice — no overdue bills right now. Want me to schedule one? Try “Schedule a rent bill for $1200 due on the 1st”.`,
-      actions: [],
-    }
-  }
-
-  if (q.includes('budget') || (q.includes('spend') && !looksLikeExpense(q))) {
+  } else if (q.includes('budget') || (q.includes('spend') && !looksLikeExpense(q))) {
     if (topBudget) {
       const pct = Math.round((topBudget.spent_amount / topBudget.limit_amount) * 100)
       const focus =
@@ -653,59 +734,65 @@ export function generateCoachReply(
           : prefs?.spend_focus
             ? ` Also keep an eye on ${prefs.spend_focus}, since you flagged it.`
             : ''
-      return {
-        reply: `${topBudget.category} is at ${pct}% of its budget (${formatCurrency(topBudget.spent_amount)} of ${formatCurrency(topBudget.limit_amount)}).${focus} Say “Set Food budget to $400” anytime, or edit limits on Home.`,
-        actions: [],
-      }
+      reply = `${topBudget.category} is at ${pct}% of its budget (${formatCurrency(topBudget.spent_amount)} of ${formatCurrency(topBudget.limit_amount)}).${focus} Say “Set Food budget to $400” anytime, or edit limits on Home.`
+    } else {
+      const takeHome = prefs?.monthly_income ?? null
+      const tip = takeHome
+        ? ` With ~${formatCurrency(takeHome)} monthly income on file, try keeping discretionary spend under ${formatCurrency(Math.round(takeHome * 0.3))}.`
+        : ' Aim to keep discretionary categories under 30% of take-home.'
+      reply = `No category budgets yet this month. Your spending is ${formatCurrency(expenses)} against ${formatCurrency(income)} income.${tip} Try “Set Food budget to $400”, or tap Add budget on Home.`
     }
-    const takeHome = prefs?.monthly_income ?? null
-    const tip = takeHome
-      ? ` With ~${formatCurrency(takeHome)} monthly income on file, try keeping discretionary spend under ${formatCurrency(Math.round(takeHome * 0.3))}.`
-      : ' Aim to keep discretionary categories under 30% of take-home.'
-    return {
-      reply: `No category budgets yet this month. Your spending is ${formatCurrency(expenses)} against ${formatCurrency(income)} income.${tip} Try “Set Food budget to $400”, or tap Add budget on Home.`,
-      actions: [],
-    }
-  }
-
-  if (q.includes('save') || q.includes('goal')) {
+  } else if (q.includes('save') || q.includes('goal')) {
     if (topGoal) {
       const left = topGoal.target_amount - topGoal.current_amount
-      return {
-        reply: `"${topGoal.title}" is looking good at ${formatCurrency(topGoal.current_amount)} of ${formatCurrency(topGoal.target_amount)}. If you tuck away ${formatCurrency(Math.ceil(left / 8))} a week, you'll close the gap smoothly.`,
-        actions: [],
-      }
+      reply = `"${topGoal.title}" is looking good at ${formatCurrency(topGoal.current_amount)} of ${formatCurrency(topGoal.target_amount)}. If you tuck away ${formatCurrency(Math.ceil(left / 8))} a week, you'll close the gap smoothly.`
+    } else if (prefs?.money_goal) {
+      reply = `Your coach goal is “${prefs.money_goal}”. Create a matching savings goal on the Goals tab so we can track progress together.`
+    } else {
+      reply = `Create a savings goal on the Goals tab — even a small emergency fund target builds momentum.`
     }
-    if (prefs?.money_goal) {
-      return {
-        reply: `Your coach goal is “${prefs.money_goal}”. Create a matching savings goal on the Goals tab so we can track progress together.`,
-        actions: [],
-      }
-    }
-    return {
-      reply: `Create a savings goal on the Goals tab — even a small emergency fund target builds momentum.`,
-      actions: [],
-    }
-  }
-
-  if (q.includes('sub') || q.includes('netflix') || q.includes('spotify')) {
-    return {
-      reply: `Active subscriptions total about ${formatCurrency(subTotal)}/month across ${activeSubs.length} services. You can add one here: “Add Netflix subscription for $15.99 monthly”.`,
-      actions: [],
-    }
-  }
-
-  if (q.includes('hello') || q.includes('hi') || q.includes('hey')) {
+  } else if (q.includes('sub') || q.includes('netflix') || q.includes('spotify')) {
+    reply = `Active subscriptions total about ${formatCurrency(subTotal)}/month across ${activeSubs.length} services. You can add one here: “Add Netflix subscription for $15.99 monthly”.`
+  } else if (q.includes('hello') || q.includes('hi') || q.includes('hey')) {
     const personal = prefs?.job_title ? ` As a ${prefs.job_title},` : ''
+    reply = `Hey ${ctx.name.split(' ')[0]}!${personal} I can log spending or income, set budgets, schedule bills, add subscriptions, and update your coach profile. Try “Set Food budget to $400” or “I spent $40 on gas today”.`
+  } else {
+    const personal = prefs ? prefsBlurb(prefs) : ' '
+    reply = `Here's your snapshot, ${ctx.name.split(' ')[0]}: income ${formatCurrency(income)}, spending ${formatCurrency(expenses)}, ${pending.length} pending bills, and ${ctx.goals.length} savings goals.${personal}Ask me to log money, set a budget, schedule a bill, or update your job/income anytime.`
+  }
+
+  return { reply, actions: [], provider: 'local', model: null }
+}
+
+export async function generateCoachReply(prompt: string, ctx: CoachContext): Promise<CoachResult> {
+  const intent = parseCoachIntent(prompt)
+  if (intent) {
+    if ('needAmount' in intent) {
+      return { reply: intent.reply, actions: [], provider: 'action', model: null }
+    }
+    return { reply: confirmAction(intent), actions: [intent], provider: 'action', model: null }
+  }
+
+  if (!puter.auth.isSignedIn()) {
+    const local = localCoachReply(prompt, ctx)
     return {
-      reply: `Hey ${ctx.name.split(' ')[0]}!${personal} I can log spending or income, set budgets, schedule bills, add subscriptions, and update your coach profile. Try “Set Food budget to $400” or “I spent $40 on gas today”.`,
-      actions: [],
+      ...local,
+      reply: `${local.reply}\n\n(Local tip — sign in to Puter above to use ${PUTER_COACH_MODEL}.)`,
     }
   }
 
-  const personal = prefs ? prefsBlurb(prefs) : ' '
+  try {
+    const puterReply = await askPuterCoach(prompt, ctx)
+    if (puterReply) {
+      return { reply: puterReply, actions: [], provider: 'puter', model: PUTER_COACH_MODEL }
+    }
+  } catch (err) {
+    console.warn('Puter AI coach unavailable, using local tips:', err)
+  }
+
+  const local = localCoachReply(prompt, ctx)
   return {
-    reply: `Here's your snapshot, ${ctx.name.split(' ')[0]}: income ${formatCurrency(income)}, spending ${formatCurrency(expenses)}, ${pending.length} pending bills, and ${ctx.goals.length} savings goals.${personal}Ask me to log money, set a budget, schedule a bill, or update your job/income anytime.`,
-    actions: [],
+    ...local,
+    reply: `${local.reply}\n\n(Local tip — Puter ${PUTER_COACH_MODEL} didn’t respond. Try signing in again.)`,
   }
 }

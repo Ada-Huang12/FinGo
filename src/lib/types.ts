@@ -165,6 +165,9 @@ export interface AiMessage {
   role: 'user' | 'assistant'
   content: string
   created_at: string
+  /** Where the assistant reply came from (client-side; not stored in Supabase). */
+  provider?: 'puter' | 'local' | 'action'
+  model?: string | null
 }
 
 export interface MonthlyChartPoint {

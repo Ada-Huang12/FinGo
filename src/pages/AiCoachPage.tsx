@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { puter } from '@heyputer/puter.js'
 import { useData } from '../contexts/DataContext'
+import { PUTER_COACH_MODEL } from '../lib/aiCoach'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Icon } from '../components/ui/Icon'
@@ -11,16 +13,30 @@ const quickPrompts = [
   'Help me save more',
 ]
 
+function providerLabel(provider?: string | null, model?: string | null) {
+  if (provider === 'puter') return `via ${model ?? PUTER_COACH_MODEL}`
+  if (provider === 'action') return 'local action'
+  if (provider === 'local') return 'local tip (not LLM)'
+  return null
+}
+
 export function AiCoachPage() {
   const { aiMessages, sendAiMessage, clearAiChat, loading, bills, budgets, goals } = useData()
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [clearing, setClearing] = useState(false)
+  const [puterSignedIn, setPuterSignedIn] = useState(() => puter.auth.isSignedIn())
+  const [puterBusy, setPuterBusy] = useState(false)
+  const [puterError, setPuterError] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [aiMessages])
+
+  useEffect(() => {
+    setPuterSignedIn(puter.auth.isSignedIn())
+  }, [])
 
   async function onSend(content: string) {
     if (!content.trim() || sending) return
@@ -46,6 +62,32 @@ export function AiCoachPage() {
     } finally {
       setClearing(false)
     }
+  }
+
+  async function onPuterSignIn() {
+    setPuterBusy(true)
+    setPuterError('')
+    try {
+      await puter.auth.signIn()
+      setPuterSignedIn(puter.auth.isSignedIn())
+    } catch (err) {
+      const msg =
+        err && typeof err === 'object' && 'msg' in err
+          ? String((err as { msg: unknown }).msg)
+          : err instanceof Error
+            ? err.message
+            : 'Could not sign in to Puter.'
+      setPuterError(msg)
+      setPuterSignedIn(puter.auth.isSignedIn())
+    } finally {
+      setPuterBusy(false)
+    }
+  }
+
+  function onPuterSignOut() {
+    puter.auth.signOut()
+    setPuterSignedIn(false)
+    setPuterError('')
   }
 
   const overdue = bills.filter((b) => b.status === 'overdue').length
@@ -83,34 +125,64 @@ export function AiCoachPage() {
 
       <Card className="flex min-h-[420px] flex-col overflow-hidden p-0">
         <div className="border-b border-slate-100 bg-gradient-to-r from-fingo-green-soft to-fingo-blue-soft px-5 py-4">
-          <div className="flex items-center gap-3">
-            <div className="animate-floaty grid h-12 w-12 place-items-center rounded-2xl bg-white text-fingo-green shadow-md">
-              <Icon name="smart_toy" filled />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="animate-floaty grid h-12 w-12 place-items-center rounded-2xl bg-white text-fingo-green shadow-md">
+                <Icon name="smart_toy" filled />
+              </div>
+              <div>
+                <p className="font-display font-bold">FinGo Coach</p>
+                <p className="text-xs text-fingo-muted">
+                  {puterSignedIn
+                    ? `Puter connected · model ${PUTER_COACH_MODEL}`
+                    : 'Local tips until you sign in to Puter'}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="font-display font-bold">FinGo Coach</p>
-              <p className="text-xs text-fingo-muted">Online · can log money for you</p>
-            </div>
+            {puterSignedIn ? (
+              <Button type="button" variant="ghost" className="!px-3 !py-1.5 text-xs" onClick={onPuterSignOut}>
+                Sign out of Puter
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="secondary"
+                className="!px-3 !py-1.5 text-xs"
+                disabled={puterBusy}
+                onClick={() => void onPuterSignIn()}
+              >
+                {puterBusy ? 'Opening Puter…' : 'Sign in to Puter'}
+              </Button>
+            )}
           </div>
+          {puterError && <p className="mt-2 text-xs text-rose-600">{puterError}</p>}
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 px-4 py-4 sm:px-5">
-          {aiMessages.map((m) => (
-            <div
-              key={m.id}
-              className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
+          {aiMessages.map((m) => {
+            const label = m.role === 'assistant' ? providerLabel(m.provider, m.model) : null
+            return (
               <div
-                className={`max-w-[85%] rounded-3xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
-                  m.role === 'user'
-                    ? 'rounded-br-md bg-fingo-green text-white'
-                    : 'rounded-bl-md bg-white text-fingo-ink'
-                }`}
+                key={m.id}
+                className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                {m.content}
+                <div
+                  className={`max-w-[85%] rounded-3xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
+                    m.role === 'user'
+                      ? 'rounded-br-md bg-fingo-green text-white'
+                      : 'rounded-bl-md bg-white text-fingo-ink'
+                  }`}
+                >
+                  <div className="whitespace-pre-wrap">{m.content}</div>
+                  {label && (
+                    <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-fingo-muted">
+                      {label}
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
           <div ref={bottomRef} />
         </div>
 
@@ -141,7 +213,7 @@ export function AiCoachPage() {
         </div>
       </Card>
 
-      <div className="flex justify-center">
+      <div className="flex flex-col items-center gap-2">
         <Button
           type="button"
           variant="ghost"
@@ -152,6 +224,14 @@ export function AiCoachPage() {
           <Icon name="delete" className="text-base" />
           {clearing ? 'Clearing…' : 'Clear chat'}
         </Button>
+        <a
+          href="https://developer.puter.com"
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs text-fingo-muted underline-offset-2 hover:underline"
+        >
+          Powered by Puter
+        </a>
       </div>
     </div>
   )
