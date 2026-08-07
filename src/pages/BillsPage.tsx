@@ -39,7 +39,17 @@ const BILL_ICONS = [
 const SUB_ICONS = ['subscriptions', 'movie', 'music_note', 'cloud', 'brush', 'sports_esports', 'newspaper'] as const
 const SUB_COLORS = ['#3B82F6', '#EF4444', '#22C55E', '#8B5CF6', '#EC4899', '#F59E0B', '#06B6D4'] as const
 
-function BillRow({ bill }: { bill: Bill }) {
+function BillRow({
+  bill,
+  onEdit,
+  onDelete,
+  onArchive,
+}: {
+  bill: Bill
+  onEdit: (bill: Bill) => void
+  onDelete: (bill: Bill) => void
+  onArchive: (bill: Bill) => void
+}) {
   const { updateBillStatus } = useData()
   return (
     <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3">
@@ -57,7 +67,7 @@ function BillRow({ bill }: { bill: Bill }) {
       </div>
       <div className="text-right">
         <p className="font-display font-bold">{formatCurrency(Number(bill.amount))}</p>
-        <div className="mt-1 flex justify-end gap-1">
+        <div className="mt-1 flex flex-wrap justify-end gap-1">
           {bill.status !== 'paid' && (
             <button
               type="button"
@@ -85,6 +95,75 @@ function BillRow({ bill }: { bill: Bill }) {
               Overdue
             </button>
           )}
+          <button
+            type="button"
+            className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-fingo-blue shadow-sm"
+            onClick={() => onEdit(bill)}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600 shadow-sm"
+            onClick={() => onArchive(bill)}
+          >
+            Archive
+          </button>
+          <button
+            type="button"
+            className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-red-600 shadow-sm"
+            onClick={() => onDelete(bill)}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ArchivedBillRow({
+  bill,
+  onRestore,
+  onDelete,
+}: {
+  bill: Bill
+  onRestore: (bill: Bill) => void
+  onDelete: (bill: Bill) => void
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3">
+      <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-slate-400 shadow-sm">
+        <Icon name={bill.icon} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate font-display font-bold text-fingo-ink">{bill.name}</p>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${statusStyles[bill.status]}`}>
+            {bill.status}
+          </span>
+        </div>
+        <p className="text-xs text-fingo-muted">
+          {bill.category} · Due {formatShortDate(bill.due_date)}
+        </p>
+      </div>
+      <div className="text-right">
+        <p className="font-display font-bold">{formatCurrency(Number(bill.amount))}</p>
+        <div className="mt-1 flex flex-wrap justify-end gap-1">
+          <button
+            type="button"
+            className="rounded-full bg-fingo-blue px-2 py-0.5 text-[10px] font-bold text-white"
+            onClick={() => onRestore(bill)}
+          >
+            Restore
+          </button>
+          <button
+            type="button"
+            className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-red-600 shadow-sm"
+            onClick={() => onDelete(bill)}
+          >
+            Delete
+          </button>
         </div>
       </div>
     </div>
@@ -274,9 +353,21 @@ function SubscriptionList({
 }
 
 export function BillsPage() {
-  const { bills, subscriptions, addBill, addSubscription, loading } = useData()
+  const {
+    bills,
+    subscriptions,
+    addBill,
+    updateBill,
+    deleteBill,
+    setBillArchived,
+    addSubscription,
+    loading,
+  } = useData()
   const [selected, setSelected] = useState(new Date())
   const [billOpen, setBillOpen] = useState(false)
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [editingBill, setEditingBill] = useState<Bill | null>(null)
+  const [deletingBill, setDeletingBill] = useState<Bill | null>(null)
   const [subOpen, setSubOpen] = useState(false)
 
   const [billName, setBillName] = useState('')
@@ -287,6 +378,7 @@ export function BillsPage() {
   const [billIcon, setBillIcon] = useState<string>('receipt_long')
   const [billError, setBillError] = useState('')
   const [billSaving, setBillSaving] = useState(false)
+  const [billDeleting, setBillDeleting] = useState(false)
 
   const [subName, setSubName] = useState('')
   const [subAmount, setSubAmount] = useState('')
@@ -297,21 +389,58 @@ export function BillsPage() {
   const [subError, setSubError] = useState('')
   const [subSaving, setSubSaving] = useState(false)
 
-  const upcoming = useMemo(
+  const activeBills = useMemo(() => bills.filter((b) => !b.archived), [bills])
+  const archivedBills = useMemo(
     () =>
       [...bills]
-        .filter((b) => b.status !== 'paid')
-        .sort((a, b) => a.due_date.localeCompare(b.due_date)),
+        .filter((b) => b.archived)
+        .sort((a, b) => b.due_date.localeCompare(a.due_date)),
     [bills],
   )
 
-  const selectedBills = bills.filter((b) =>
+  const upcoming = useMemo(
+    () =>
+      [...activeBills]
+        .filter((b) => b.status !== 'paid')
+        .sort((a, b) => a.due_date.localeCompare(b.due_date)),
+    [activeBills],
+  )
+
+  const selectedBills = activeBills.filter((b) =>
     isSameDay(new Date(b.due_date + 'T12:00:00'), selected),
   )
 
-  const overdueCount = bills.filter((b) => b.status === 'overdue').length
+  const overdueCount = activeBills.filter((b) => b.status === 'overdue').length
 
-  async function onAddBill(e: FormEvent) {
+  function resetBillForm() {
+    setEditingBill(null)
+    setBillName('')
+    setBillAmount('')
+    setBillDue(format(addDays(new Date(), 7), 'yyyy-MM-dd'))
+    setBillCategory('Utilities')
+    setBillStatus('pending')
+    setBillIcon('receipt_long')
+    setBillError('')
+  }
+
+  function openAddBill() {
+    resetBillForm()
+    setBillOpen(true)
+  }
+
+  function openEditBill(bill: Bill) {
+    setEditingBill(bill)
+    setBillName(bill.name)
+    setBillAmount(String(bill.amount))
+    setBillDue(bill.due_date)
+    setBillCategory(bill.category)
+    setBillStatus(bill.status)
+    setBillIcon(bill.icon)
+    setBillError('')
+    setBillOpen(true)
+  }
+
+  async function onSaveBill(e: FormEvent) {
     e.preventDefault()
     setBillError('')
     const amount = Number(billAmount)
@@ -321,24 +450,52 @@ export function BillsPage() {
     }
     setBillSaving(true)
     try {
-      await addBill({
+      const payload = {
         name: billName.trim(),
         amount,
         due_date: billDue,
         status: billStatus,
         category: billCategory,
         icon: billIcon,
-      })
+      }
+      if (editingBill) await updateBill(editingBill.id, payload)
+      else await addBill(payload)
       setBillOpen(false)
-      setBillName('')
-      setBillAmount('')
-      setBillDue(format(addDays(new Date(), 7), 'yyyy-MM-dd'))
-      setBillStatus('pending')
+      resetBillForm()
       setSelected(new Date(billDue + 'T12:00:00'))
     } catch (err) {
       setBillError(err instanceof Error ? err.message : 'Could not save bill.')
     } finally {
       setBillSaving(false)
+    }
+  }
+
+  async function onConfirmDelete() {
+    if (!deletingBill) return
+    setBillDeleting(true)
+    try {
+      await deleteBill(deletingBill.id)
+      setDeletingBill(null)
+    } catch {
+      setDeletingBill(null)
+    } finally {
+      setBillDeleting(false)
+    }
+  }
+
+  async function onArchiveBill(bill: Bill) {
+    try {
+      await setBillArchived(bill.id, true)
+    } catch {
+      /* ignore — list stays as-is */
+    }
+  }
+
+  async function onRestoreBill(bill: Bill) {
+    try {
+      await setBillArchived(bill.id, false)
+    } catch {
+      /* ignore */
     }
   }
 
@@ -387,7 +544,11 @@ export function BillsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setBillOpen(true)}>
+          <Button variant="secondary" onClick={() => setArchiveOpen(true)}>
+            <Icon name="inventory_2" />
+            Archive{archivedBills.length > 0 ? ` (${archivedBills.length})` : ''}
+          </Button>
+          <Button onClick={openAddBill}>
             <Icon name="add" />
             Add bill
           </Button>
@@ -412,18 +573,24 @@ export function BillsPage() {
       )}
 
       <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-        <BillCalendar bills={bills} selected={selected} onSelect={setSelected} />
+        <BillCalendar bills={activeBills} selected={selected} onSelect={setSelected} />
         <Card className="p-5">
           <h2 className="mb-3 font-display text-lg font-bold">
             {format(selected, 'MMM d')} · {selectedBills.length ? 'Due today' : 'No bills'}
           </h2>
           <div className="space-y-3">
             {selectedBills.map((b) => (
-              <BillRow key={b.id} bill={b} />
+              <BillRow
+                key={b.id}
+                bill={b}
+                onEdit={openEditBill}
+                onDelete={setDeletingBill}
+                onArchive={(bill) => void onArchiveBill(bill)}
+              />
             ))}
             {selectedBills.length === 0 && (
               <p className="text-sm text-fingo-muted">
-                {bills.length === 0
+                {activeBills.length === 0
                   ? 'Add a bill to see it on the calendar.'
                   : 'Pick a dotted day to inspect bills.'}
               </p>
@@ -436,13 +603,15 @@ export function BillsPage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-display text-lg font-bold">Upcoming bills</h2>
-            <p className="text-sm text-fingo-muted">Pending, overdue, and recently paid</p>
+            <p className="text-sm text-fingo-muted">
+              Pending and overdue — archive paid or old bills to keep this list short
+            </p>
           </div>
           <div className="flex gap-2">
             <Button variant="secondary" className="!px-3 !py-2 text-sm" onClick={() => setSelected(new Date())}>
               Today
             </Button>
-            <Button className="!px-3 !py-2 text-sm" onClick={() => setBillOpen(true)}>
+            <Button className="!px-3 !py-2 text-sm" onClick={openAddBill}>
               <Icon name="add" />
               Add bill
             </Button>
@@ -450,24 +619,46 @@ export function BillsPage() {
         </div>
         <div className="space-y-3">
           {upcoming.map((b) => (
-            <BillRow key={b.id} bill={b} />
+            <BillRow
+              key={b.id}
+              bill={b}
+              onEdit={openEditBill}
+              onDelete={setDeletingBill}
+              onArchive={(bill) => void onArchiveBill(bill)}
+            />
           ))}
-          {bills
+          {activeBills
             .filter((b) => b.status === 'paid')
             .slice(0, 2)
             .map((b) => (
-              <BillRow key={b.id} bill={b} />
+              <BillRow
+                key={b.id}
+                bill={b}
+                onEdit={openEditBill}
+                onDelete={setDeletingBill}
+                onArchive={(bill) => void onArchiveBill(bill)}
+              />
             ))}
-          {bills.length === 0 && (
+          {activeBills.length === 0 && (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
               <p className="text-sm font-semibold text-fingo-ink">No bills yet</p>
               <p className="mt-1 text-sm text-fingo-muted">
-                Start with rent, utilities, phone, or insurance — whatever you pay.
+                {archivedBills.length > 0
+                  ? 'Your active list is empty — restore something from the archive, or add a new bill.'
+                  : 'Start with rent, utilities, phone, or insurance — whatever you pay.'}
               </p>
-              <Button className="mt-4" onClick={() => setBillOpen(true)}>
-                <Icon name="add" />
-                Add your first bill
-              </Button>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {archivedBills.length > 0 && (
+                  <Button variant="secondary" onClick={() => setArchiveOpen(true)}>
+                    <Icon name="inventory_2" />
+                    Open archive
+                  </Button>
+                )}
+                <Button onClick={openAddBill}>
+                  <Icon name="add" />
+                  Add your first bill
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -475,8 +666,15 @@ export function BillsPage() {
 
       <SubscriptionList subscriptions={subscriptions} onAdd={() => setSubOpen(true)} />
 
-      <Modal open={billOpen} title="Add bill" onClose={() => setBillOpen(false)}>
-        <form onSubmit={onAddBill} className="space-y-3">
+      <Modal
+        open={billOpen}
+        title={editingBill ? 'Edit bill' : 'Add bill'}
+        onClose={() => {
+          setBillOpen(false)
+          resetBillForm()
+        }}
+      >
+        <form onSubmit={onSaveBill} className="space-y-3">
           <div>
             <label className="mb-1 block text-sm font-semibold text-fingo-muted">Name</label>
             <input
@@ -559,9 +757,60 @@ export function BillsPage() {
           </div>
           {billError && <p className="text-sm text-red-500">{billError}</p>}
           <Button className="w-full" type="submit" disabled={billSaving}>
-            {billSaving ? 'Saving…' : 'Save bill'}
+            {billSaving ? 'Saving…' : editingBill ? 'Update bill' : 'Save bill'}
           </Button>
         </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(deletingBill)}
+        title="Delete bill"
+        onClose={() => setDeletingBill(null)}
+      >
+        <p className="text-sm text-fingo-muted">
+          Delete <span className="font-semibold text-fingo-ink">{deletingBill?.name}</span>
+          {deletingBill ? ` (${formatCurrency(Number(deletingBill.amount))})` : ''}? This can’t be
+          undone.
+        </p>
+        <div className="mt-4 flex gap-2">
+          <Button variant="secondary" className="flex-1" onClick={() => setDeletingBill(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            className="flex-1"
+            disabled={billDeleting}
+            onClick={() => void onConfirmDelete()}
+          >
+            {billDeleting ? 'Deleting…' : 'Delete'}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal open={archiveOpen} title="Bills archive" onClose={() => setArchiveOpen(false)}>
+        <p className="mb-4 text-sm text-fingo-muted">
+          Archived bills leave the calendar and upcoming list. Restore them anytime, or delete for
+          good.
+        </p>
+        <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+          {archivedBills.map((b) => (
+            <ArchivedBillRow
+              key={b.id}
+              bill={b}
+              onRestore={(bill) => void onRestoreBill(bill)}
+              onDelete={setDeletingBill}
+            />
+          ))}
+          {archivedBills.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
+              <Icon name="inventory_2" className="mx-auto text-slate-400" />
+              <p className="mt-2 text-sm font-semibold text-fingo-ink">Archive is empty</p>
+              <p className="mt-1 text-sm text-fingo-muted">
+                Use Archive on any bill to tuck it away when your list gets long.
+              </p>
+            </div>
+          )}
+        </div>
       </Modal>
 
       <Modal open={subOpen} title="Add subscription" onClose={() => setSubOpen(false)}>

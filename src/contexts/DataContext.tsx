@@ -75,6 +75,19 @@ interface DataContextValue {
     category: string
     icon: string
   }) => Promise<void>
+  updateBill: (
+    id: string,
+    input: {
+      name: string
+      amount: number
+      due_date: string
+      status: BillStatus
+      category: string
+      icon: string
+    },
+  ) => Promise<void>
+  deleteBill: (id: string) => Promise<void>
+  setBillArchived: (id: string, archived: boolean) => Promise<void>
   toggleSubscription: (id: string) => Promise<void>
   addSubscription: (input: {
     name: string
@@ -233,7 +246,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     setTransactions(txs)
     setBudgets(store.budgets.filter((b) => b.user_id === uid_))
-    setBills(store.bills.filter((b) => b.user_id === uid_))
+    setBills(
+      store.bills
+        .filter((b) => b.user_id === uid_)
+        .map((b) => ({ ...b, archived: Boolean(b.archived) })),
+    )
     setSubscriptions(store.subscriptions.filter((s) => s.user_id === uid_))
     setGoals(enrichedGoals)
     setContributions(contribs)
@@ -326,7 +343,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     setTransactions((txRes.data ?? []) as Transaction[])
     setBudgets((budgetRes.data ?? []) as Budget[])
-    setBills((billRes.data ?? []) as Bill[])
+    setBills(
+      ((billRes.data ?? []) as Bill[]).map((b) => ({
+        ...b,
+        archived: Boolean(b.archived),
+      })),
+    )
     setSubscriptions((subRes.data ?? []) as Subscription[])
     setGoals(goalsData)
     setContributions(
@@ -558,6 +580,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         id: uid(),
         user_id: user.id,
         created_at: new Date().toISOString(),
+        archived: false,
         ...input,
       })
       saveStore(store)
@@ -565,7 +588,55 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return
     }
     if (!supabase) return
-    const { error } = await supabase.from('bills').insert({ user_id: user.id, ...input })
+    const { error } = await supabase
+      .from('bills')
+      .insert({ user_id: user.id, archived: false, ...input })
+    if (error) throw error
+    await refreshSupabase()
+  }
+
+  const updateBill: DataContextValue['updateBill'] = async (id, input) => {
+    if (mode === 'local') {
+      const store = loadStore()
+      const bill = store.bills.find((b) => b.id === id)
+      if (!bill) throw new Error('Bill not found.')
+      Object.assign(bill, input)
+      saveStore(store)
+      refreshLocal()
+      return
+    }
+    if (!supabase) return
+    const { error } = await supabase.from('bills').update(input).eq('id', id)
+    if (error) throw error
+    await refreshSupabase()
+  }
+
+  const deleteBill: DataContextValue['deleteBill'] = async (id) => {
+    if (mode === 'local') {
+      const store = loadStore()
+      store.bills = store.bills.filter((b) => b.id !== id)
+      saveStore(store)
+      refreshLocal()
+      return
+    }
+    if (!supabase) return
+    const { error } = await supabase.from('bills').delete().eq('id', id)
+    if (error) throw error
+    await refreshSupabase()
+  }
+
+  const setBillArchived: DataContextValue['setBillArchived'] = async (id, archived) => {
+    if (mode === 'local') {
+      const store = loadStore()
+      const bill = store.bills.find((b) => b.id === id)
+      if (!bill) throw new Error('Bill not found.')
+      bill.archived = archived
+      saveStore(store)
+      refreshLocal()
+      return
+    }
+    if (!supabase) return
+    const { error } = await supabase.from('bills').update({ archived }).eq('id', id)
     if (error) throw error
     await refreshSupabase()
   }
@@ -936,7 +1007,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       name: user.full_name,
       transactions,
       budgets,
-      bills,
+      bills: bills.filter((b) => !b.archived),
       subscriptions,
       goals,
       coachPrefs: user.coach_prefs,
@@ -1049,7 +1120,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const statuses = buildQuestStatuses(questClaims, {
       transactions,
       budgets,
-      bills,
+      bills: bills.filter((b) => !b.archived),
       goals,
       contributions,
       userId: user.id,
@@ -1126,7 +1197,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return buildQuestStatuses(questClaims, {
       transactions,
       budgets,
-      bills,
+      bills: bills.filter((b) => !b.archived),
       goals,
       contributions,
       userId: user.id,
@@ -1156,6 +1227,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setBudget,
     updateBillStatus,
     addBill,
+    updateBill,
+    deleteBill,
+    setBillArchived,
     toggleSubscription,
     addSubscription,
     createGoal,

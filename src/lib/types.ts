@@ -90,6 +90,7 @@ export interface Bill {
   status: BillStatus
   category: string
   icon: string
+  archived: boolean
   created_at: string
 }
 

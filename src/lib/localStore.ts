@@ -264,6 +264,10 @@ export function loadStore(): LocalStore {
       ...g,
       points_awarded: Boolean(g.points_awarded),
     }))
+    parsed.bills = (parsed.bills ?? []).map((b) => ({
+      ...b,
+      archived: Boolean(b.archived),
+    }))
     parsed.questClaims = parsed.questClaims ?? []
     return parsed
   } catch {
