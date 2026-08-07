@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { format, subMonths } from 'date-fns'
+import { format, subDays, subMonths } from 'date-fns'
 import { useAuth } from './AuthContext'
 import { generateCoachReply } from '../lib/aiCoach'
 import {
@@ -64,6 +64,8 @@ interface DataContextValue {
     description: string
     date: string
   }) => Promise<void>
+  clearTransactionHistory: () => Promise<void>
+  purgeStaleTransactions: () => Promise<void>
   updateBudget: (id: string, limit_amount: number) => Promise<void>
   setBudget: (category: string, limit_amount: number) => Promise<void>
   updateBillStatus: (id: string, status: BillStatus) => Promise<void>
@@ -122,6 +124,25 @@ interface DataContextValue {
 
 const DataContext = createContext<DataContextValue | null>(null)
 
+function transactionCutoffDate() {
+  return format(subDays(new Date(), 7), 'yyyy-MM-dd')
+}
+
+function applyExpenseBudgetDelta(
+  budgets: Budget[],
+  userId: string,
+  tx: Pick<Transaction, 'type' | 'amount' | 'category' | 'date'>,
+  sign: 1 | -1,
+) {
+  if (tx.type !== 'expense') return
+  const month = String(tx.date).slice(0, 7)
+  const budget = budgets.find(
+    (b) => b.user_id === userId && b.category === tx.category && b.month === month,
+  )
+  if (!budget) return
+  budget.spent_amount = Math.max(0, Number(budget.spent_amount) + sign * Number(tx.amount))
+}
+
 function buildChart(transactions: Transaction[]): MonthlyChartPoint[] {
   const points: MonthlyChartPoint[] = []
   for (let i = 5; i >= 0; i--) {
@@ -169,6 +190,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [questClaims, setQuestClaims] = useState<QuestClaim[]>([])
   const [lastPointsEarned, setLastPointsEarned] = useState<number | null>(null)
   const activeUserIdRef = useRef<string | null>(null)
+  const autoPurgeRef = useRef(true)
+
+  useEffect(() => {
+    autoPurgeRef.current = user?.auto_purge_transactions !== false
+  }, [user?.auto_purge_transactions])
 
   const clearData = useCallback(() => {
     setTransactions([])
@@ -189,6 +215,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!user) return
     const store = loadStore()
     const uid_ = user.id
+
+    if (autoPurgeRef.current) {
+      const cutoff = transactionCutoffDate()
+      const kept: Transaction[] = []
+      let removedAny = false
+      for (const tx of store.transactions) {
+        if (tx.user_id === uid_ && String(tx.date).slice(0, 10) < cutoff) {
+          applyExpenseBudgetDelta(store.budgets, uid_, tx, -1)
+          removedAny = true
+          continue
+        }
+        kept.push(tx)
+      }
+      if (removedAny) {
+        store.transactions = kept
+        saveStore(store)
+      }
+    }
+
     const txs = store.transactions.filter((t) => t.user_id === uid_)
     const userGoals = store.goals.filter(
       (g) =>
@@ -341,8 +386,42 @@ export function DataProvider({ children }: { children: ReactNode }) {
       relatedProfiles = (data ?? []) as Profile[]
     }
 
-    setTransactions((txRes.data ?? []) as Transaction[])
-    setBudgets((budgetRes.data ?? []) as Budget[])
+    let txs = (txRes.data ?? []) as Transaction[]
+    let budgetsData = (budgetRes.data ?? []) as Budget[]
+
+    if (autoPurgeRef.current) {
+      const cutoff = transactionCutoffDate()
+      const stale = txs.filter((t) => String(t.date).slice(0, 10) < cutoff)
+      if (stale.length > 0) {
+        const staleIds = stale.map((t) => t.id)
+        await supabase.from('transactions').delete().in('id', staleIds)
+
+        const deltas = new Map<string, number>()
+        for (const tx of stale) {
+          if (tx.type !== 'expense') continue
+          const key = `${String(tx.date).slice(0, 7)}::${tx.category}`
+          deltas.set(key, (deltas.get(key) ?? 0) + Number(tx.amount))
+        }
+        if (deltas.size > 0) {
+          const { data: allBudgets } = await supabase.from('budgets').select('*').eq('user_id', uid_)
+          for (const b of (allBudgets ?? []) as Budget[]) {
+            const delta = deltas.get(`${b.month}::${b.category}`)
+            if (!delta) continue
+            const next = Math.max(0, Number(b.spent_amount) - delta)
+            await supabase.from('budgets').update({ spent_amount: next }).eq('id', b.id)
+            if (b.month === month) {
+              budgetsData = budgetsData.map((x) =>
+                x.id === b.id ? { ...x, spent_amount: next } : x,
+              )
+            }
+          }
+        }
+        txs = txs.filter((t) => String(t.date).slice(0, 10) >= cutoff)
+      }
+    }
+
+    setTransactions(txs)
+    setBudgets(budgetsData)
     setBills(
       ((billRes.data ?? []) as Bill[]).map((b) => ({
         ...b,
@@ -478,6 +557,102 @@ export function DataProvider({ children }: { children: ReactNode }) {
           .from('budgets')
           .update({ spent_amount: Number(budget.spent_amount) + input.amount })
           .eq('id', budget.id)
+      }
+    }
+    await refreshSupabase()
+  }
+
+  const clearTransactionHistory: DataContextValue['clearTransactionHistory'] = async () => {
+    if (!user) return
+    if (mode === 'local') {
+      const store = loadStore()
+      const remaining: Transaction[] = []
+      for (const tx of store.transactions) {
+        if (tx.user_id === user.id) {
+          applyExpenseBudgetDelta(store.budgets, user.id, tx, -1)
+          continue
+        }
+        remaining.push(tx)
+      }
+      store.transactions = remaining
+      saveStore(store)
+      refreshLocal()
+      return
+    }
+    if (!supabase) return
+    const mine = transactions.filter((t) => t.user_id === user.id)
+    if (mine.length === 0) {
+      setTransactions([])
+      return
+    }
+    const { error } = await supabase.from('transactions').delete().eq('user_id', user.id)
+    if (error) throw error
+
+    const deltas = new Map<string, number>()
+    for (const tx of mine) {
+      if (tx.type !== 'expense') continue
+      const key = `${String(tx.date).slice(0, 7)}::${tx.category}`
+      deltas.set(key, (deltas.get(key) ?? 0) + Number(tx.amount))
+    }
+    if (deltas.size > 0) {
+      const { data: allBudgets } = await supabase.from('budgets').select('*').eq('user_id', user.id)
+      for (const b of (allBudgets ?? []) as Budget[]) {
+        const delta = deltas.get(`${b.month}::${b.category}`)
+        if (!delta) continue
+        await supabase
+          .from('budgets')
+          .update({ spent_amount: Math.max(0, Number(b.spent_amount) - delta) })
+          .eq('id', b.id)
+      }
+    }
+    await refreshSupabase()
+  }
+
+  const purgeStaleTransactions: DataContextValue['purgeStaleTransactions'] = async () => {
+    if (!user) return
+    const cutoff = transactionCutoffDate()
+    if (mode === 'local') {
+      const store = loadStore()
+      const kept: Transaction[] = []
+      let removedAny = false
+      for (const tx of store.transactions) {
+        if (tx.user_id === user.id && String(tx.date).slice(0, 10) < cutoff) {
+          applyExpenseBudgetDelta(store.budgets, user.id, tx, -1)
+          removedAny = true
+          continue
+        }
+        kept.push(tx)
+      }
+      if (removedAny) {
+        store.transactions = kept
+        saveStore(store)
+        refreshLocal()
+      }
+      return
+    }
+    if (!supabase) return
+    const stale = transactions.filter((t) => String(t.date).slice(0, 10) < cutoff)
+    if (stale.length === 0) return
+    const { error } = await supabase.from('transactions').delete().in(
+      'id',
+      stale.map((t) => t.id),
+    )
+    if (error) throw error
+    const deltas = new Map<string, number>()
+    for (const tx of stale) {
+      if (tx.type !== 'expense') continue
+      const key = `${String(tx.date).slice(0, 7)}::${tx.category}`
+      deltas.set(key, (deltas.get(key) ?? 0) + Number(tx.amount))
+    }
+    if (deltas.size > 0) {
+      const { data: allBudgets } = await supabase.from('budgets').select('*').eq('user_id', user.id)
+      for (const b of (allBudgets ?? []) as Budget[]) {
+        const delta = deltas.get(`${b.month}::${b.category}`)
+        if (!delta) continue
+        await supabase
+          .from('budgets')
+          .update({ spent_amount: Math.max(0, Number(b.spent_amount) - delta) })
+          .eq('id', b.id)
       }
     }
     await refreshSupabase()
@@ -1223,6 +1398,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     lastPointsEarned,
     refresh,
     addTransaction,
+    clearTransactionHistory,
+    purgeStaleTransactions,
     updateBudget,
     setBudget,
     updateBillStatus,

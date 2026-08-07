@@ -18,6 +18,8 @@ export interface Profile {
   owned_accessories: string[]
   coach_prefs: CoachPrefs
   onboarding_completed: boolean
+  /** When true, transactions older than 7 days are removed automatically. */
+  auto_purge_transactions: boolean
   created_at: string
 }
 

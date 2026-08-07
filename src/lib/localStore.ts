@@ -36,6 +36,7 @@ function normalizeProfile(raw: Partial<Profile> & Pick<Profile, 'id' | 'email' |
     coach_prefs: normalizeCoachPrefs(raw.coach_prefs ?? EMPTY_COACH_PREFS),
     // Existing local profiles skip the survey; new signups set this to false explicitly.
     onboarding_completed: raw.onboarding_completed ?? true,
+    auto_purge_transactions: raw.auto_purge_transactions ?? true,
     created_at: raw.created_at ?? new Date().toISOString(),
   }
 }
@@ -328,6 +329,16 @@ export function localUpdateCoachPrefs(
   if (!profile) throw new Error('Profile not found.')
   profile.coach_prefs = normalizeCoachPrefs({ ...profile.coach_prefs, ...prefs })
   if (options?.complete) profile.onboarding_completed = true
+  saveStore(store)
+  return normalizeProfile(profile)
+}
+
+export function localSetAutoPurgeTransactions(enabled: boolean): Profile {
+  const store = loadStore()
+  if (!store.currentUserId) throw new Error('Not signed in.')
+  const profile = store.profiles.find((p) => p.id === store.currentUserId)
+  if (!profile) throw new Error('Profile not found.')
+  profile.auto_purge_transactions = enabled
   saveStore(store)
   return normalizeProfile(profile)
 }

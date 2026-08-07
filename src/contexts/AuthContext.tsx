@@ -15,6 +15,7 @@ import {
   localSignOut,
   localSignUp,
   localUpdateCoachPrefs,
+  localSetAutoPurgeTransactions,
 } from '../lib/localStore'
 import {
   defaultAvatarProfileFields,
@@ -35,6 +36,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
   saveCoachPrefs: (prefs: Partial<CoachPrefs>, options?: { complete?: boolean }) => Promise<void>
+  setAutoPurgeTransactions: (enabled: boolean) => Promise<void>
   completeOnboarding: () => Promise<void>
 }
 
@@ -63,6 +65,7 @@ function coerceProfile(raw: Partial<Profile> & { id: string; email: string; full
     coach_prefs: normalizeCoachPrefs(raw.coach_prefs ?? EMPTY_COACH_PREFS),
     // Missing column / older rows → treat as complete so login isn't blocked.
     onboarding_completed: raw.onboarding_completed ?? true,
+    auto_purge_transactions: raw.auto_purge_transactions ?? true,
     created_at: raw.created_at ?? new Date().toISOString(),
   }
 }
@@ -279,6 +282,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [mode, user],
   )
 
+  const setAutoPurgeTransactions = useCallback(
+    async (enabled: boolean) => {
+      if (mode === 'local') {
+        setUser(localSetAutoPurgeTransactions(enabled))
+        return
+      }
+      if (!supabase || !user) throw new Error('Not signed in.')
+      const { error } = await supabase
+        .from('profiles')
+        .update({ auto_purge_transactions: enabled })
+        .eq('id', user.id)
+      if (error) throw error
+      setUser({ ...user, auto_purge_transactions: enabled })
+    },
+    [mode, user],
+  )
+
   const completeOnboarding = useCallback(async () => {
     if (mode === 'local') {
       setUser(localCompleteOnboarding())
@@ -315,6 +335,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refreshProfile,
       saveCoachPrefs,
+      setAutoPurgeTransactions,
       completeOnboarding,
     }),
     [
@@ -327,6 +348,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refreshProfile,
       saveCoachPrefs,
+      setAutoPurgeTransactions,
       completeOnboarding,
     ],
   )
