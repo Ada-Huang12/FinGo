@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import { DataProvider } from '../../contexts/DataContext'
+import { AiCoachFab } from '../home/AiCoachFab'
 import { BottomNav, Header } from './Header'
 
 export function AppLayout() {
@@ -11,6 +12,7 @@ export function AppLayout() {
           <Outlet />
         </main>
         <BottomNav />
+        <AiCoachFab />
       </div>
     </DataProvider>
   )

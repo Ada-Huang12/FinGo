@@ -5,6 +5,7 @@ import { PUTER_COACH_MODEL } from '../lib/aiCoach'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Icon } from '../components/ui/Icon'
+import { AiCoachProfileCard } from '../components/ai/AiCoachProfileCard'
 
 const quickPrompts = [
   'I spent $40 on snacks today, log it',
@@ -90,7 +91,7 @@ export function AiCoachPage() {
     setPuterError('')
   }
 
-  const overdue = bills.filter((b) => b.status === 'overdue').length
+  const overdue = bills.filter((b) => !b.archived && b.status === 'overdue').length
   const tightBudget = budgets.filter((b) => Number(b.spent_amount) / Number(b.limit_amount) >= 0.8).length
 
   if (loading) return <p className="text-fingo-muted">Loading coach…</p>
@@ -220,6 +221,8 @@ export function AiCoachPage() {
           </form>
         </div>
       </Card>
+
+      <AiCoachProfileCard />
 
       <div className="flex flex-col items-center gap-2">
         <Button

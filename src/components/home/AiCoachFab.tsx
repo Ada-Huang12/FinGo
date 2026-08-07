@@ -1,9 +1,12 @@
 import { createPortal } from 'react-dom'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Icon } from '../ui/Icon'
 
-/** Floating AI Coach button fixed to the viewport (screen), home page only. */
+/** Floating AI Coach button fixed to the viewport on all app pages. */
 export function AiCoachFab() {
+  const { pathname } = useLocation()
+  if (pathname === '/ai-coach') return null
+
   return createPortal(
     <Link
       to="/ai-coach"
