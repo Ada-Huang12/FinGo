@@ -46,10 +46,34 @@ function displayNameFromAuthUser(meta: Record<string, unknown> | undefined, emai
   return fullName || name || email.split('@')[0] || 'User'
 }
 
+function autoPurgeStorageKey(userId: string) {
+  return `fingo.auto_purge_transactions.${userId}`
+}
+
+function readAutoPurgeOverride(userId: string): boolean | null {
+  try {
+    const raw = localStorage.getItem(autoPurgeStorageKey(userId))
+    if (raw === 'true') return true
+    if (raw === 'false') return false
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
+function writeAutoPurgeOverride(userId: string, enabled: boolean) {
+  try {
+    localStorage.setItem(autoPurgeStorageKey(userId), String(enabled))
+  } catch {
+    /* ignore */
+  }
+}
+
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 function coerceProfile(raw: Partial<Profile> & { id: string; email: string; full_name: string }): Profile {
   const defaults = defaultAvatarProfileFields()
+  const storedOverride = readAutoPurgeOverride(raw.id)
   return {
     id: raw.id,
     email: raw.email,
@@ -65,7 +89,10 @@ function coerceProfile(raw: Partial<Profile> & { id: string; email: string; full
     coach_prefs: normalizeCoachPrefs(raw.coach_prefs ?? EMPTY_COACH_PREFS),
     // Missing column / older rows → treat as complete so login isn't blocked.
     onboarding_completed: raw.onboarding_completed ?? true,
-    auto_purge_transactions: raw.auto_purge_transactions ?? true,
+    auto_purge_transactions:
+      typeof raw.auto_purge_transactions === 'boolean'
+        ? raw.auto_purge_transactions
+        : (storedOverride ?? true),
     created_at: raw.created_at ?? new Date().toISOString(),
   }
 }
@@ -284,17 +311,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setAutoPurgeTransactions = useCallback(
     async (enabled: boolean) => {
+      if (!user) throw new Error('Not signed in.')
+      writeAutoPurgeOverride(user.id, enabled)
+      setUser({ ...user, auto_purge_transactions: enabled })
+
       if (mode === 'local') {
         setUser(localSetAutoPurgeTransactions(enabled))
         return
       }
-      if (!supabase || !user) throw new Error('Not signed in.')
+      if (!supabase) return
       const { error } = await supabase
         .from('profiles')
         .update({ auto_purge_transactions: enabled })
         .eq('id', user.id)
-      if (error) throw error
-      setUser({ ...user, auto_purge_transactions: enabled })
+      if (error) {
+        // Preference still applies via local override (e.g. before migration 011).
+        console.warn('Could not persist auto-purge setting to Supabase:', error.message)
+      }
     },
     [mode, user],
   )

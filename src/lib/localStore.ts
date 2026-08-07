@@ -36,7 +36,8 @@ function normalizeProfile(raw: Partial<Profile> & Pick<Profile, 'id' | 'email' |
     coach_prefs: normalizeCoachPrefs(raw.coach_prefs ?? EMPTY_COACH_PREFS),
     // Existing local profiles skip the survey; new signups set this to false explicitly.
     onboarding_completed: raw.onboarding_completed ?? true,
-    auto_purge_transactions: raw.auto_purge_transactions ?? true,
+    auto_purge_transactions:
+      typeof raw.auto_purge_transactions === 'boolean' ? raw.auto_purge_transactions : true,
     created_at: raw.created_at ?? new Date().toISOString(),
   }
 }

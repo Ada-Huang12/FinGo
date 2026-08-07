@@ -71,11 +71,14 @@ export function TransactionHistoryCard() {
     .reduce((s, t) => s + Number(t.amount), 0)
 
   async function onToggleAutoPurge() {
+    if (savingPref) return
     setSavingPref(true)
+    const next = !autoPurge
     try {
-      const next = !autoPurge
       await setAutoPurgeTransactions(next)
       if (next) await purgeStaleTransactions()
+    } catch (err) {
+      console.warn(err)
     } finally {
       setSavingPref(false)
     }
@@ -92,10 +95,10 @@ export function TransactionHistoryCard() {
   }
 
   return (
-    <Card className="flex h-[28rem] flex-col overflow-hidden p-5 sm:h-[32rem] sm:p-6">
+    <Card className="flex h-full min-h-[22rem] flex-col overflow-hidden p-5 sm:p-6 lg:min-h-0">
       <div className="shrink-0 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
             <h2 className="font-display text-lg font-bold text-fingo-ink">Transaction history</h2>
             <button
               type="button"
@@ -106,7 +109,7 @@ export function TransactionHistoryCard() {
               onClick={() => void onToggleAutoPurge()}
               className={`relative h-7 w-12 shrink-0 rounded-full transition ${
                 autoPurge ? 'bg-fingo-green' : 'bg-slate-300'
-              }`}
+              } ${savingPref ? 'opacity-70' : ''}`}
             >
               <span
                 className={`absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-white shadow transition ${

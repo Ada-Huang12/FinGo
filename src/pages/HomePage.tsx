@@ -56,7 +56,7 @@ export function HomePage() {
 
       <AiTipCard name={user?.full_name ?? 'friend'} />
 
-      <section className="grid items-start gap-5 lg:grid-cols-2">
+      <section className="grid items-stretch gap-5 lg:grid-cols-2">
         <TransactionHistoryCard />
         <div className="flex flex-col gap-5">
           <LevelProgressCard />
